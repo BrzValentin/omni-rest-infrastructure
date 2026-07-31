@@ -17,6 +17,7 @@ src/frontend/*.tsbuildinfo
 # .NET build output
 **/bin/
 **/obj/
+src/backend/TestResults/
 
 # Local environment files
 .env
@@ -26,3 +27,9 @@ src/frontend/*.tsbuildinfo
 # Logs
 *.log
 npm-debug.log*
+
+# Local performance and browser-test artifacts
+src/frontend/test-results/
+src/frontend/playwright-report/
+src/frontend/blob-report/
+src/frontend/.playwright-cli/

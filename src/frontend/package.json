@@ -2,25 +2,46 @@
   "name": "omni-rest-frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --grep-invert @perf",
+    "test:perf": "playwright test e2e/menu.perf.spec.ts --project=chromium && node scripts/perf-report.mjs"
   },
   "dependencies": {
     "next": "16.2.12",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.62.1",
     "@types/node": "26.1.2",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "axe-core": "4.12.1",
     "eslint": "9.39.5",
     "eslint-config-next": "16.2.12",
-    "typescript": "6.0.3"
+    "jsdom": "30.0.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.9",
+    "minimatch": "10.2.6",
+    "postcss": "8.5.25",
+    "sharp": "0.35.3"
   },
   "engines": {
     "node": "26.5.0",

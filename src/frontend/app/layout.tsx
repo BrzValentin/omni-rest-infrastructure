@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Omni REST",
-  description: "Omni REST application scaffold",
+  description: "Public restaurant information and digital menu.",
 };
 
 type RootLayoutProps = Readonly<{
@@ -14,7 +14,7 @@ type RootLayoutProps = Readonly<{
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en">
+    <html lang="en-CA">
       <body>{children}</body>
     </html>
   );

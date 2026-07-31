@@ -21,6 +21,7 @@ This repository is a monorepo for the Omni REST frontend and backend application
 - Node.js 26.5.0
 - npm 11.17.0
 - .NET SDK 10.0.302
+- Docker Engine with Compose
 
 The repository pins Node.js in `.node-version`, npm in `src/frontend/package.json`, and the .NET SDK in `global.json`.
 
@@ -50,21 +51,74 @@ npm run start
 
 ## Frontend checks
 
-Run the frontend quality checks from `src/frontend`:
+Unit and static checks do not require PostgreSQL. Run them from `src/frontend`:
 
 ```sh
 npm run lint
 npm run typecheck
+npm run test
+npm run test:coverage
 npm run build
 ```
 
+The browser and performance suites use the real backend and PostgreSQL rather than mocked menu responses. Before their first run, complete the database, local EF tool, restore, and backend build steps under [Backend commands](#backend-commands). The harness starts the already-built backend with `--no-build`.
+
+Then build the frontend and run the suites from `src/frontend`:
+
+```sh
+npm run build
+npm run test:e2e
+npm run test:perf
+```
+
+The Playwright harness applies pending migrations, idempotently loads both the ordinary sample and the isolated 30-category/1,000-dish fixture, and starts the API, test proxy, and production frontend. Keep local ports `3000`, `5279`, and `5290` available. `test:e2e` covers Chromium, Firefox, WebKit, and the 320 px and 768 px viewport projects. `test:perf` reports local production-build measurements only; it is not staging or field-performance evidence.
+
 ## Backend commands
 
-Run backend commands from the repository root:
+The backend uses PostgreSQL 18, EF Core 10, and the repository-local `dotnet-ef` tool. Start the local database without deleting its volume:
+
+```sh
+docker info
+docker compose up -d --wait postgres
+dotnet tool restore
+```
+
+Apply the three ordered Phase 2 migrations and load the guarded Development sample. Seeding is explicit, never runs at production startup, and is idempotent:
+
+```sh
+dotnet ef migrations list \
+  --project src/backend/OmniRest.Api/OmniRest.Api.csproj \
+  --startup-project src/backend/OmniRest.Api/OmniRest.Api.csproj
+dotnet ef database update \
+  --project src/backend/OmniRest.Api/OmniRest.Api.csproj \
+  --startup-project src/backend/OmniRest.Api/OmniRest.Api.csproj
+ASPNETCORE_ENVIRONMENT=Development \
+  dotnet run --project src/backend/OmniRest.Api/OmniRest.Api.csproj -- --seed-sample
+```
+
+Use `--seed-large` instead to load the isolated `large-menu.localhost` reference fixture with 30 categories and 1,000 dishes. The ordinary sample resolves from `menu.localhost`; other deterministic states use `no-menu.localhost`, `no-active.localhost`, `active-empty.localhost`, and `alternate.localhost`.
+
+Build, test, format-check, and run from the repository root:
 
 ```sh
 dotnet restore src/backend/OmniRest.sln
 dotnet build src/backend/OmniRest.sln --no-restore
-dotnet test src/backend/OmniRest.sln --no-build
-dotnet run --project src/backend/OmniRest.Api/OmniRest.Api.csproj
+dotnet test src/backend/OmniRest.sln --no-build --logger "console;verbosity=normal"
+dotnet format src/backend/OmniRest.sln --verify-no-changes --no-restore
+dotnet run --project src/backend/OmniRest.Api/OmniRest.Api.csproj -- --urls http://127.0.0.1:5279
 ```
+
+The public contract is `GET /api/v1/public/menu` and derives the restaurant only from the validated request host. For a local smoke request:
+
+```sh
+curl --include --header 'Host: menu.localhost' http://127.0.0.1:5279/api/v1/public/menu
+```
+
+For a manual full-stack development session, leave that API command running and start the frontend in another terminal:
+
+```sh
+cd src/frontend
+OMNI_REST_API_BASE_URL=http://127.0.0.1:5279 npm run dev
+```
+
+Development OpenAPI is available at `/openapi/v1.json`. Do not run `docker compose down -v`; the named PostgreSQL volume is intentionally persistent.
