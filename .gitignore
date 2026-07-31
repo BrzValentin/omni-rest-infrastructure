@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Frontend dependencies and build output
+src/frontend/node_modules/
+src/frontend/.next/
+src/frontend/out/
+src/frontend/coverage/
+src/frontend/*.tsbuildinfo
+
+# .NET build output
+**/bin/
+**/obj/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
