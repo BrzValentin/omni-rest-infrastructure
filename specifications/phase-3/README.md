@@ -15,6 +15,8 @@ This package converts Phase 3 product requirements into technical specifications
 - `pr-8-authentication.md`
 - `pr-9-restaurant-information-management.md`
 - `pr-10-phone-interaction.md`
+- `backend-operations.md`
+- `backend-implementation-evidence.md`
 
 ## 2. Scope normalization
 

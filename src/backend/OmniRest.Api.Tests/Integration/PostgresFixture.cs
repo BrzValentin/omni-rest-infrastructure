@@ -43,10 +43,14 @@ public sealed class PostgresFixture : IAsyncLifetime
 
 public sealed class MenuApiFactory(string connectionString) : WebApplicationFactory<Program>
 {
+    private readonly string mediaRoot = Path.Combine(Path.GetTempPath(), "omni-rest-api-tests", Guid.NewGuid().ToString("N"));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:MenuDatabase", connectionString);
+        builder.UseSetting("MediaStorage:LocalRoot", mediaRoot);
+        builder.UseSetting("PublicationDispatcher:Enabled", "false");
         builder.UseSetting("PublicMenu:AllowedMediaHosts:0", "images.example.test");
         builder.UseSetting("Logging:LogLevel:Default", "Warning");
         builder.UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore", "Warning");

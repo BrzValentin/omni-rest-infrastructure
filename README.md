@@ -40,7 +40,7 @@ Start the development server:
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://menu.localhost:3000` for the seeded public tenant. The protected owner portal is at `http://menu.localhost:3000/admin/login` after an owner has been provisioned.
 
 To build and run the production server locally:
 
@@ -61,7 +61,7 @@ npm run test:coverage
 npm run build
 ```
 
-The browser and performance suites use the real backend and PostgreSQL rather than mocked menu responses. Before their first run, complete the database, local EF tool, restore, and backend build steps under [Backend commands](#backend-commands). The harness starts the already-built backend with `--no-build`.
+The browser and performance suites use the real backend and PostgreSQL for public menu responses. The Phase 3 owner journey uses a deterministic same-origin proxy fixture so test credentials are not provisioned into the persistent database; backend auth and authorization remain covered by the backend integration suite. Before the first browser run, complete the database, local EF tool, restore, and backend build steps under [Backend commands](#backend-commands). The harness starts the already-built backend with `--no-build`.
 
 Then build the frontend and run the suites from `src/frontend`:
 
@@ -83,7 +83,7 @@ docker compose up -d --wait postgres
 dotnet tool restore
 ```
 
-Apply the three ordered Phase 2 migrations and load the guarded Development sample. Seeding is explicit, never runs at production startup, and is idempotent:
+Apply the three ordered Phase 2 migrations plus the additive Phase 3 Identity/restaurant-management migration, then load the guarded Development sample. Seeding is explicit, never runs at production startup, and is idempotent:
 
 ```sh
 dotnet ef migrations list \
@@ -108,11 +108,16 @@ dotnet format src/backend/OmniRest.sln --verify-no-changes --no-restore
 dotnet run --project src/backend/OmniRest.Api/OmniRest.Api.csproj -- --urls http://127.0.0.1:5279
 ```
 
-The public contract is `GET /api/v1/public/menu` and derives the restaurant only from the validated request host. For a local smoke request:
+The public contracts are `GET /api/v1/public/menu` and `GET /api/v1/public/restaurant`; both derive the restaurant only from the validated request host. Owner auth is under `/api/v1/auth`, and membership-derived management is under `/api/v1/admin`. For local public smoke requests:
 
 ```sh
 curl --include --header 'Host: menu.localhost' http://127.0.0.1:5279/api/v1/public/menu
+curl --include --header 'Host: menu.localhost' http://127.0.0.1:5279/api/v1/public/restaurant
 ```
+
+Owner accounts are never publicly registered. Use the controlled provisioning, revocation, and production Data Protection procedure in [`specifications/phase-3/backend-operations.md`](specifications/phase-3/backend-operations.md). State-changing auth/admin requests first obtain `/api/v1/auth/antiforgery` and return its token in the `X-CSRF-TOKEN` header.
+
+Phase 3 frontend acceptance mapping, automated results, and explicit device/contract limitations are recorded in [`specifications/phase-3/frontend-implementation-evidence.md`](specifications/phase-3/frontend-implementation-evidence.md).
 
 For a manual full-stack development session, leave that API command running and start the frontend in another terminal:
 

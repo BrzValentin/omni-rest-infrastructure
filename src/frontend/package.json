@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test --grep-invert @perf",
+    "test:e2e:real": "playwright test --config=playwright.real.config.ts",
     "test:perf": "playwright test e2e/menu.perf.spec.ts --project=chromium && node scripts/perf-report.mjs"
   },
   "dependencies": {

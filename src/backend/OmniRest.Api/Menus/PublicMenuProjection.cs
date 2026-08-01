@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OmniRest.Api.Data;
+using OmniRest.Api.Restaurants;
 
 namespace OmniRest.Api.Menus;
 
@@ -13,7 +14,9 @@ public sealed class PublicMenuOptions
     public HashSet<string> AllowedMediaHosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
-public sealed class PublicMenuProjectionBuilder(IOptions<PublicMenuOptions> options)
+public sealed class PublicMenuProjectionBuilder(
+    IOptions<PublicMenuOptions> options,
+    RestaurantPublicProjectionBuilder restaurantBuilder)
 {
     private readonly IReadOnlySet<string> allowedMediaHosts = options.Value.AllowedMediaHosts;
 
@@ -34,7 +37,8 @@ public sealed class PublicMenuProjectionBuilder(IOptions<PublicMenuOptions> opti
             restaurant.Settings.TaxDisplayMode,
             restaurant.Settings.TaxNoticeKey,
             version.ToString(CultureInfo.InvariantCulture),
-            publicMenu);
+            publicMenu,
+            restaurantBuilder.Build(restaurant, version));
     }
 
     private PublicMenu BuildMenu(Guid restaurantId, MenuEntity menu)

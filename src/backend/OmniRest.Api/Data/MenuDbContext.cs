@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using OmniRest.Api.Menus;
 
 namespace OmniRest.Api.Data;
 
-public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbContext(options)
+public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> options)
+    : IdentityDbContext<OwnerUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<RestaurantEntity> Restaurants => Set<RestaurantEntity>();
     public DbSet<RestaurantSettingsEntity> RestaurantSettings => Set<RestaurantSettingsEntity>();
@@ -16,9 +19,18 @@ public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbC
     public DbSet<BadgeEntity> Badges => Set<BadgeEntity>();
     public DbSet<DishBadgeEntity> DishBadges => Set<DishBadgeEntity>();
     public DbSet<PublicationEntity> Publications => Set<PublicationEntity>();
+    public DbSet<RestaurantMembershipEntity> RestaurantMemberships => Set<RestaurantMembershipEntity>();
+    public DbSet<RestaurantAddressEntity> RestaurantAddresses => Set<RestaurantAddressEntity>();
+    public DbSet<RegularHourIntervalEntity> RegularHourIntervals => Set<RegularHourIntervalEntity>();
+    public DbSet<SpecialHourEntity> SpecialHours => Set<SpecialHourEntity>();
+    public DbSet<SpecialHourIntervalEntity> SpecialHourIntervals => Set<SpecialHourIntervalEntity>();
+    public DbSet<SocialLinkEntity> SocialLinks => Set<SocialLinkEntity>();
+    public DbSet<PublicationOutboxEntity> PublicationOutbox => Set<PublicationOutboxEntity>();
+    public DbSet<AuditEventEntity> AuditEvents => Set<AuditEventEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
         modelBuilder.HasDefaultSchema("public");
         ConfigureRestaurant(modelBuilder.Entity<RestaurantEntity>());
         ConfigureSettings(modelBuilder.Entity<RestaurantSettingsEntity>());
@@ -29,6 +41,7 @@ public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbC
         ConfigureDish(modelBuilder.Entity<DishEntity>());
         ConfigureBadges(modelBuilder.Entity<BadgeEntity>(), modelBuilder.Entity<DishBadgeEntity>());
         ConfigurePublication(modelBuilder.Entity<PublicationEntity>());
+        ConfigurePhase3(modelBuilder);
     }
 
     private static void ConfigureRestaurant(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<RestaurantEntity> entity)
@@ -37,6 +50,12 @@ public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbC
         entity.HasKey(x => x.Id);
         entity.Property(x => x.Id).HasColumnName("id");
         entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(120).IsRequired();
+        entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+        entity.Property(x => x.PhoneE164).HasColumnName("phone_e164").HasMaxLength(16);
+        entity.Property(x => x.PhoneDisplay).HasColumnName("phone_display").HasMaxLength(40);
+        entity.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
+        entity.Property(x => x.MainMediaAssetId).HasColumnName("main_media_asset_id");
+        entity.Property(x => x.DraftVersion).HasColumnName("draft_version").HasDefaultValue(1L).IsConcurrencyToken();
         entity.Property(x => x.CreatedAt).HasColumnName("created_at");
         entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
         entity.Property(x => x.ConcurrencyVersion).HasColumnName("concurrency_version").HasDefaultValue(1L).IsConcurrencyToken();
@@ -50,6 +69,7 @@ public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbC
         entity.Property(x => x.RestaurantId).HasColumnName("restaurant_id");
         entity.Property(x => x.Locale).HasColumnName("locale").HasMaxLength(35).IsRequired();
         entity.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3).IsFixedLength().IsRequired();
+        entity.Property(x => x.TimeZoneId).HasColumnName("time_zone_id").HasMaxLength(100).HasDefaultValue("America/Winnipeg").IsRequired();
         entity.Property(x => x.TaxDisplayMode).HasColumnName("tax_display_mode").HasMaxLength(10).IsRequired();
         entity.Property(x => x.TaxNoticeKey).HasColumnName("tax_notice_key").HasMaxLength(100);
         entity.Property(x => x.ConcurrencyVersion).HasColumnName("concurrency_version").HasDefaultValue(1L).IsConcurrencyToken();
@@ -80,6 +100,7 @@ public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbC
         asset.Property(x => x.Id).HasColumnName("id");
         asset.Property(x => x.RestaurantId).HasColumnName("restaurant_id");
         asset.Property(x => x.AltText).HasColumnName("alt_text").HasMaxLength(300).IsRequired();
+        asset.Property(x => x.ProcessingStatus).HasColumnName("processing_status").HasMaxLength(20).HasDefaultValue("ready").IsRequired();
         asset.Property(x => x.ConcurrencyVersion).HasColumnName("concurrency_version").HasDefaultValue(1L).IsConcurrencyToken();
         asset.HasIndex(x => new { x.Id, x.RestaurantId }).IsUnique();
         asset.HasOne(x => x.Restaurant).WithMany().HasForeignKey(x => x.RestaurantId).OnDelete(DeleteBehavior.Cascade);
@@ -218,10 +239,12 @@ public sealed class MenuDbContext(DbContextOptions<MenuDbContext> options) : DbC
         entity.Property(x => x.Id).HasColumnName("id");
         entity.Property(x => x.RestaurantId).HasColumnName("restaurant_id");
         entity.Property(x => x.Version).HasColumnName("version");
+        entity.Property(x => x.OperationId).HasColumnName("operation_id");
         entity.Property(x => x.SnapshotJson).HasColumnName("snapshot").HasColumnType("jsonb").IsRequired();
         entity.Property(x => x.IsCurrent).HasColumnName("is_current");
         entity.Property(x => x.PublishedAt).HasColumnName("published_at");
         entity.HasIndex(x => new { x.RestaurantId, x.Version }).IsUnique();
+        entity.HasIndex(x => x.OperationId).IsUnique().HasFilter("operation_id IS NOT NULL");
         entity.HasIndex(x => x.RestaurantId).IsUnique().HasFilter("is_current");
         entity.HasOne(x => x.Restaurant).WithMany(x => x.Publications).HasForeignKey(x => x.RestaurantId).OnDelete(DeleteBehavior.Cascade);
         entity.ToTable(table => table.HasCheckConstraint("ck_publications_version", "version > 0"));
@@ -232,13 +255,25 @@ public sealed class RestaurantEntity
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = null!;
+    public string? Description { get; set; }
+    public string? PhoneE164 { get; set; }
+    public string? PhoneDisplay { get; set; }
+    public string? Email { get; set; }
+    public Guid? MainMediaAssetId { get; set; }
+    public long DraftVersion { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long ConcurrencyVersion { get; set; } = 1;
     public RestaurantSettingsEntity Settings { get; set; } = null!;
+    public RestaurantAddressEntity? Address { get; set; }
+    public MediaAssetEntity? MainMediaAsset { get; set; }
     public ICollection<RestaurantDomainEntity> Domains { get; } = [];
     public ICollection<MenuEntity> Menus { get; } = [];
     public ICollection<PublicationEntity> Publications { get; } = [];
+    public ICollection<RestaurantMembershipEntity> Memberships { get; } = [];
+    public ICollection<RegularHourIntervalEntity> RegularHours { get; } = [];
+    public ICollection<SpecialHourEntity> SpecialHours { get; } = [];
+    public ICollection<SocialLinkEntity> SocialLinks { get; } = [];
 }
 
 public sealed class RestaurantSettingsEntity
@@ -246,6 +281,7 @@ public sealed class RestaurantSettingsEntity
     public Guid RestaurantId { get; set; }
     public string Locale { get; set; } = null!;
     public string Currency { get; set; } = null!;
+    public string TimeZoneId { get; set; } = "America/Winnipeg";
     public string TaxDisplayMode { get; set; } = null!;
     public string? TaxNoticeKey { get; set; }
     public long ConcurrencyVersion { get; set; } = 1;
@@ -266,6 +302,7 @@ public sealed class MediaAssetEntity
     public Guid Id { get; set; }
     public Guid RestaurantId { get; set; }
     public string AltText { get; set; } = null!;
+    public string ProcessingStatus { get; set; } = "ready";
     public long ConcurrencyVersion { get; set; } = 1;
     public RestaurantEntity Restaurant { get; set; } = null!;
     public ICollection<MediaVariantEntity> Variants { get; } = [];
@@ -359,6 +396,7 @@ public sealed class PublicationEntity
     public Guid Id { get; set; }
     public Guid RestaurantId { get; set; }
     public long Version { get; set; }
+    public Guid? OperationId { get; set; }
     public string SnapshotJson { get; set; } = null!;
     public bool IsCurrent { get; set; }
     public DateTimeOffset PublishedAt { get; set; }

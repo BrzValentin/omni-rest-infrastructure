@@ -159,7 +159,7 @@ public sealed class MenuApiTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task OpenApiDocumentsTypedReadOnlyContractWithoutInternalFields()
+    public async Task OpenApiDocumentsPublicAndPhaseThreeContractsWithoutPersistenceFields()
     {
         using var factory = postgres.CreateFactory();
         await postgres.RecreateLatestAndSeedAsync(factory);
@@ -172,9 +172,11 @@ public sealed class MenuApiTests(PostgresFixture postgres)
         Assert.Contains("/api/v1/public/menu", document, StringComparison.Ordinal);
         Assert.Contains("PublicMenuResponse", document, StringComparison.Ordinal);
         Assert.Contains("publicationVersion", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/public/restaurant", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/auth/login", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/admin/restaurant/profile", document, StringComparison.Ordinal);
         Assert.DoesNotContain("concurrencyVersion", document, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("archivedAt", document, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("/admin", document, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("patch", document, StringComparison.OrdinalIgnoreCase);
     }
 

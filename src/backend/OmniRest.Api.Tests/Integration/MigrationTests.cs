@@ -18,7 +18,7 @@ public sealed class MigrationTests(PostgresFixture postgres)
 
         var pending = await context.Database.GetPendingMigrationsAsync();
         Assert.Empty(pending);
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -121,6 +121,57 @@ public sealed class MigrationTests(PostgresFixture postgres)
         Assert.Equal(slugs.Count, slugs.Distinct(StringComparer.Ordinal).Count());
         Assert.All(slugs, slug => Assert.InRange(slug.Length, 1, 100));
         Assert.All(slugs, slug => Assert.Matches("^[a-z0-9]+(?:-[a-z0-9]+)*$", slug));
+    }
+
+    [Fact]
+    public async Task PhaseThreeUpgradePreservesExistingPublicationAndBackfillsDraftVersionAndRestaurantProjection()
+    {
+        await using var context = CreateContext();
+        await context.Database.EnsureDeletedAsync();
+        var migrator = context.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260731044753_Pr7DishAvailability");
+
+        await using (var connection = new NpgsqlConnection(postgres.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var insert = new NpgsqlCommand(
+                """
+                INSERT INTO public.restaurants (id, name, created_at, updated_at)
+                VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Preserved Restaurant', now(), now());
+                INSERT INTO public.restaurant_settings
+                  (restaurant_id, locale, currency, tax_display_mode, concurrency_version)
+                VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'en-CA', 'CAD', 'inclusive', 1);
+                INSERT INTO public.publications
+                  (id, restaurant_id, version, snapshot, is_current, published_at)
+                VALUES (
+                  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  7,
+                  '{"restaurantId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","restaurantName":"Preserved Restaurant","locale":"en-CA","currency":"CAD","taxDisplayMode":"inclusive","taxNoticeKey":null,"publicationVersion":"7","menu":null}'::jsonb,
+                  true,
+                  now());
+                """, connection);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await migrator.MigrateAsync();
+
+        await using var verify = new NpgsqlConnection(postgres.ConnectionString);
+        await verify.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT restaurant.draft_version,
+                   settings.time_zone_id,
+                   publication.snapshot #>> '{restaurant,name}'
+            FROM public.restaurants AS restaurant
+            JOIN public.restaurant_settings AS settings ON settings.restaurant_id = restaurant.id
+            JOIN public.publications AS publication ON publication.restaurant_id = restaurant.id;
+            """, verify);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(7, reader.GetInt64(0));
+        Assert.Equal("America/Winnipeg", reader.GetString(1));
+        Assert.Equal("Preserved Restaurant", reader.GetString(2));
     }
 
     private MenuDbContext CreateContext()

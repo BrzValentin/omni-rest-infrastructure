@@ -1,0 +1,4 @@
+.phoneLink { min-height: 2.75rem; align-items: center; gap: .5rem; border-radius: 999px; font-weight: 750; text-decoration: none; }
+.primary { display: inline-flex; padding: .65rem 1rem; background: var(--colour-ink); color: var(--colour-surface); }
+.compact { display: inline-flex; padding: .5rem .75rem; border: 1px solid var(--colour-line-strong); color: var(--colour-ink); }
+.phoneLink:hover { text-decoration: underline; text-underline-offset: .2em; }

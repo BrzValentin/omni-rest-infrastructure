@@ -9,6 +9,7 @@ namespace OmniRest.Api.Infrastructure;
 public static class GuardedSampleDataSeeder
 {
     public static readonly Guid OrdinaryRestaurantId = Id("restaurant:ordinary");
+    public static readonly Guid AlternateMediaAssetId = Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     public static readonly Guid NoMenuRestaurantId = Id("restaurant:no-menu");
     public static readonly Guid NoActiveRestaurantId = Id("restaurant:no-active");
     public static readonly Guid ActiveEmptyRestaurantId = Id("restaurant:active-empty");
@@ -142,6 +143,25 @@ public static class GuardedSampleDataSeeder
         var menu = NewMenu(restaurant, "Menu du jour");
         var category = NewCategory(menu, "Plats", 0, new HashSet<string>(StringComparer.Ordinal));
         NewDish(category, "Tourtière", 19.25m, 0, AvailabilityStatus.Available);
+        var privateMedia = new MediaAssetEntity
+        {
+            Id = AlternateMediaAssetId,
+            RestaurantId = restaurant.Id,
+            Restaurant = restaurant,
+            AltText = "Alternate tenant private image",
+            ProcessingStatus = "ready"
+        };
+        privateMedia.Variants.Add(new MediaVariantEntity
+        {
+            Id = Id("alternate:media:private:640"),
+            RestaurantId = restaurant.Id,
+            MediaAssetId = privateMedia.Id,
+            MediaAsset = privateMedia,
+            Url = "/media/seed/alternate-private.webp",
+            Width = 640,
+            Height = 480
+        });
+        dbContext.MediaAssets.Add(privateMedia);
         AddBadges(dbContext, restaurant);
         dbContext.Restaurants.Add(restaurant);
         AddPublication(dbContext, restaurant, menu, builder, serializer, 3);
@@ -328,6 +348,7 @@ public static class GuardedSampleDataSeeder
         PublicMenuSnapshotSerializer serializer,
         long version)
     {
+        restaurant.DraftVersion = Math.Max(restaurant.DraftVersion, version);
         var response = builder.Build(restaurant, menu, version);
         var publication = new PublicationEntity
         {

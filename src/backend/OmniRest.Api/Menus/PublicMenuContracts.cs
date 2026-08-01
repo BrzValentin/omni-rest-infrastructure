@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace OmniRest.Api.Menus;
 
+using OmniRest.Api.Restaurants;
+
 public sealed record PublicMenuResponse(
     string RestaurantId,
     string RestaurantName,
@@ -10,7 +12,8 @@ public sealed record PublicMenuResponse(
     string TaxDisplayMode,
     string? TaxNoticeKey,
     string PublicationVersion,
-    PublicMenu? Menu);
+    PublicMenu? Menu,
+    PublicRestaurantResponse? Restaurant = null);
 
 public sealed record PublicMenu(string Id, string Name, IReadOnlyList<PublicCategory> Categories);
 
