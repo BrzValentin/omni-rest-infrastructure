@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Frontend dependencies and build output
+src/frontend/node_modules/
+src/frontend/.next/
+src/frontend/out/
+src/frontend/coverage/
+src/frontend/*.tsbuildinfo
+
+# .NET build output
+**/bin/
+**/obj/
+src/backend/TestResults/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Safe local Phase 3 supervisor state, logs, and persistent development media
+.local-run/
+
+# Local performance and browser-test artifacts
+src/frontend/test-results/
+src/frontend/playwright-report/
+src/frontend/blob-report/
+src/frontend/.playwright-cli/

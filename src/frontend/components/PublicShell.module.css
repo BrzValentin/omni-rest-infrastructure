@@ -1,0 +1,93 @@
+.shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 5%, rgb(215 171 95 / 18%), transparent 27rem),
+    var(--colour-canvas);
+}
+
+.skipLink {
+  position: fixed;
+  z-index: 20;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--colour-ink);
+  color: var(--colour-surface);
+  transform: translateY(-150%);
+}
+
+.skipLink:focus {
+  transform: translateY(0);
+}
+
+.header {
+  display: flex;
+  width: min(100% - 2rem, 76rem);
+  min-height: 4.5rem;
+  margin-inline: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--colour-line);
+}
+
+.brand,
+.navLink {
+  color: var(--colour-ink);
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.brand {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.brandMark {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--colour-accent);
+  color: var(--colour-accent-ink);
+  font-family: Georgia, serif;
+  font-size: 0.8rem;
+}
+
+.navLink {
+  display: inline-grid;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+  padding-inline: 0.75rem;
+  border-radius: 999px;
+}
+
+.navLink:hover {
+  background: var(--colour-surface-muted);
+}
+
+.footer {
+  width: min(100% - 2rem, 76rem);
+  margin: 4rem auto 0;
+  padding-block: 1.5rem 2rem;
+  border-top: 1px solid var(--colour-line);
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+}
+
+.footer p {
+  margin: 0;
+}
+
+@media (forced-colors: active) {
+  .brandMark {
+    border: 1px solid CanvasText;
+  }
+}
