@@ -22,8 +22,43 @@ This repository is a monorepo for the Omni REST frontend and backend application
 - npm 11.17.0
 - .NET SDK 10.0.302
 - Docker Engine with Compose
+- `lsof` (included with macOS) or `ss` (commonly provided by `iproute2` on Linux) so the local supervisor can safely inspect occupied ports
 
 The repository pins Node.js in `.node-version`, npm in `src/frontend/package.json`, and the .NET SDK in `global.json`.
+
+## One-command local Phase 3 stack
+
+From any directory, start the complete local stack with:
+
+```sh
+/absolute/path/to/omni-rest-infrastructure/scripts/local-dev.sh
+```
+
+Or, from the repository root:
+
+```sh
+scripts/local-dev.sh run
+```
+
+The foreground supervisor validates Docker/Compose, `curl`, and the exact pinned Node, npm, and .NET versions before changing anything. It starts PostgreSQL, restores/builds the backend, applies migrations, runs the guarded sample seed, provisions a deterministic Development-only owner on the first successful run, builds the frontend, then starts the API and Next.js production server. It waits for both the real API and the frontend before printing URLs and credentials.
+
+```text
+Public: http://menu.localhost:3000
+Admin:  http://menu.localhost:3000/admin/login
+Email:  owner@menu.localhost
+Password: printed by the ready supervisor only
+```
+
+Keep the supervisor terminal open; press Ctrl-C to stop the app processes and PostgreSQL without deleting data. From another terminal:
+
+```sh
+scripts/local-dev.sh status
+scripts/local-dev.sh logs
+scripts/local-dev.sh logs -f
+scripts/local-dev.sh stop
+```
+
+State, PID records, logs, the lockfile-install marker, and persistent local media live under ignored `.local-run/`. The named PostgreSQL volume is also persistent. This workflow never runs `docker compose down`, `down -v`, volume removal, database reset, or data deletion. If ports `3000`, `5279`, or `55432` are busy, stop the conflicting process first; use `logs` to inspect startup errors.
 
 ## Frontend setup and run
 

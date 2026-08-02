@@ -28,6 +28,9 @@ src/backend/TestResults/
 *.log
 npm-debug.log*
 
+# Safe local Phase 3 supervisor state, logs, and persistent development media
+.local-run/
+
 # Local performance and browser-test artifacts
 src/frontend/test-results/
 src/frontend/playwright-report/
