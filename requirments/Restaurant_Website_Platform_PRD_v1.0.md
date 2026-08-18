@@ -9,80 +9,80 @@
 
 # Product Vision
 
-Создать современную платформу для ресторанов, позволяющую владельцам самостоятельно управлять своим сайтом без участия разработчиков, а посетителям — быстро находить актуальную информацию о ресторане, меню и способах связи.
+Build a modern platform for restaurants that lets owners manage their website independently, without involving developers, while allowing visitors to quickly find up-to-date information about the restaurant, its menu, and ways to get in touch.
 
 # Product Goals
 
-## Для посетителя
-- быстро найти ресторан
-- посмотреть актуальное меню
-- узнать цены
-- получить контактную информацию
-- построить маршрут
-- позвонить в ресторан
+## For the visitor
+- quickly find a restaurant
+- view the current menu
+- see prices
+- get contact information
+- get directions
+- call the restaurant
 
-## Для владельца
-- самостоятельно обновлять информацию
-- изменять меню и цены
-- добавлять фотографии
-- управлять сайтом без технических знаний
+## For the owner
+- update information independently
+- change the menu and prices
+- add photos
+- manage the website without technical knowledge
 
 # Product Constraint
 
-Несмотря на то, что MVP поддерживает только один ресторан, продукт должен проектироваться с учетом дальнейшего перехода к платформе для нескольких ресторанов без необходимости полного перепроектирования системы.
+Although the MVP supports only a single restaurant, the product must be designed with future expansion to a multi-restaurant platform in mind, without requiring a full system redesign.
 
 ---
 
 # Phase 1 — Restaurant Website Foundation
 
-## Цель
-Создать современный публичный сайт ресторана с основной информацией.
+## Goal
+Create a modern public restaurant website with core information.
 
 ### PR-1. Home Page
 **Acceptance Criteria**
-- название ресторана
-- краткое описание
-- главное изображение
-- кнопка **View Menu**
-- кнопка **Call**
-- кнопка **Directions**
-- кнопка Directions открывает приложение навигации или картографический сервис с маршрутом к ресторану.
+- restaurant name
+- brief description
+- main image
+- **View Menu** button
+- **Call** button
+- **Directions** button
+- the Directions button opens a navigation app or map service with a route to the restaurant.
 
 ### PR-2. Restaurant Information
 **Acceptance Criteria**
-- телефон
-- адрес
-- email (если указан)
-- карта
-- обычные часы работы
-- ссылки на социальные сети (если указаны)
+- phone number
+- address
+- email (if provided)
+- map
+- regular business hours
+- links to social media (if provided)
 
 ### PR-3. Special Operating Hours
 **Acceptance Criteria**
-- специальные часы работы по датам
-- возможность отметить ресторан закрытым
-- специальные часы имеют приоритет над обычными
+- special operating hours by date
+- ability to mark the restaurant as closed
+- special hours take priority over regular hours
 
 ### PR-4. Responsive Experience
 **Acceptance Criteria**
-- корректная работа на мобильных устройствах
-- корректная работа на планшетах
-- корректная работа на компьютерах
+- works correctly on mobile devices
+- works correctly on tablets
+- works correctly on desktop computers
 
 ---
 
 # Phase 2 — Digital Menu
 
-## Цель
-Предоставить современное цифровое меню.
+## Goal
+Provide a modern digital menu.
 
 ### PR-5. Menu Browsing
 **Acceptance Criteria**
-Для каждого блюда отображаются:
-- название
-- описание
-- цена
-- фотография
+Each dish displays:
+- name
+- description
+- price
+- photo
 - Dietary Badges:
   - Vegetarian
   - Vegan
@@ -94,77 +94,77 @@
   - Popular
   - New
 
-Если налоги не включены в стоимость, отображается сноска о GST/PST.
+If taxes are not included in the price, a GST/PST footnote is displayed.
 
 ### PR-6. Menu Categories
 **Acceptance Criteria**
-- просмотр категорий
-- переход между категориями
-- просмотр блюд внутри категории
+- browse categories
+- switch between categories
+- view dishes within a category
 
 ### PR-7. Dish Availability
 **Acceptance Criteria**
-Недоступные блюда имеют понятное визуальное обозначение.
+Unavailable dishes have a clear visual indicator.
 
 ---
 
 # Phase 3 — Restaurant Management
 
-## Цель
-Позволить владельцу самостоятельно управлять сайтом.
+## Goal
+Allow the owner to manage the website independently.
 
 ### PR-8. Authentication
 **Acceptance Criteria**
-- вход
-- выход
+- log in
+- log out
 
 ### PR-9. Restaurant Information Management
 **Acceptance Criteria**
-Владелец может изменять:
-- название
-- описание
-- телефон
-- адрес
+The owner can change:
+- name
+- description
+- phone number
+- address
 - email
-- обычные часы работы
-- специальные часы работы
-- ссылки на соцсети
-- главное изображение
+- regular business hours
+- special operating hours
+- social media links
+- main image
 
-Поддерживаются:
+Supported platforms:
 - Instagram
 - Facebook
 - TikTok
 - Google Business Profile
 
-После сохранения изменения публикуются автоматически.
+After saving, changes are published automatically.
 
 ### PR-10. Phone Interaction
 **Acceptance Criteria**
-На мобильных устройствах кнопка Call инициирует звонок.
+On mobile devices, the Call button initiates a phone call.
 
 ---
 
 # Phase 4 — Menu Management
 
-## Цель
-Полное управление меню.
+## Goal
+Full menu management.
 
 ### PR-11. Category Management
 **Acceptance Criteria**
-- создать категорию
-- переименовать
-- удалить
-- изменить порядок
+- create a category
+- rename
+- delete
+- reorder
 
 ### PR-12. Dish Management
 **Acceptance Criteria**
-- добавить блюдо
-- изменить блюдо
-- удалить блюдо
-- описание
-- фотография
-- теги:
+- add a dish
+- edit a dish
+- delete a dish
+- description
+- photo
+- tags:
   - Vegetarian
   - Vegan
   - Gluten-Free
@@ -177,9 +177,9 @@
 
 ### PR-13. Price Management
 **Acceptance Criteria**
-- изменение цены
-- новая цена публикуется после сохранения
-- отображается информация о GST/PST при необходимости
+- change price
+- the new price is published after saving
+- GST/PST information is displayed when applicable
 
 ### PR-14. Dish Availability
 **Acceptance Criteria**
@@ -190,80 +190,80 @@
 
 # Phase 5 — Gallery
 
-## Цель
-Показать интерьер и блюда.
+## Goal
+Showcase the interior and dishes.
 
 ### PR-15. Public Gallery
 **Acceptance Criteria**
-- просмотр фотографий
+- view photos
 
 ### PR-16. Gallery Management
 **Acceptance Criteria**
-- загрузка
-- удаление
-- изменение порядка
+- upload
+- delete
+- reorder
 
 ---
 
 # Phase 6 — Search Visibility
 
-## Цель
-Увеличить органический трафик.
+## Goal
+Increase organic traffic.
 
 ### PR-17. Search Engine Indexing
-Все публичные страницы доступны для индексирования.
+All public pages are available for indexing.
 
 ### PR-18. Structured Restaurant Information
-Поисковые системы получают структурированную информацию:
-- название
-- описание
-- адрес
-- контакты
-- часы работы
-- меню
+Search engines receive structured information:
+- name
+- description
+- address
+- contacts
+- business hours
+- menu
 
 ### PR-19. Searchable Menu
-Меню индексируется как текст, а не PDF.
+The menu is indexed as text, not as a PDF.
 
 ---
 
 # Phase 7 — Multi-Restaurant Platform
 
-## Цель
-Поддержка нескольких ресторанов.
+## Goal
+Support multiple restaurants.
 
 ### PR-20. Independent Restaurants
-Каждый ресторан имеет:
-- собственный сайт
-- меню
-- фотографии
-- контакты
-- настройки
+Each restaurant has:
+- its own website
+- menu
+- photos
+- contacts
+- settings
 
 ### PR-21. Independent Management
-Владелец управляет только своим рестораном.
+The owner manages only their own restaurant.
 
 ---
 
 # Phase 8 — Product Polish
 
-## Цель
-Подготовить продукт к коммерческому использованию.
+## Goal
+Prepare the product for commercial use.
 
 ### PR-22. Error Handling
-Понятные сообщения об ошибках.
+Clear error messages.
 
 ### PR-23. Performance
-Быстрая загрузка основных страниц.
+Fast loading of core pages.
 
 ### PR-24. Ease of Use
-Владелец без технических знаний может:
-- изменить цену
-- добавить блюдо
-- изменить часы работы
-- изменить специальные часы
-- загрузить фотографии
-- изменить контактную информацию
+An owner without technical knowledge can:
+- change a price
+- add a dish
+- change business hours
+- change special hours
+- upload photos
+- change contact information
 
 ### PR-25. Content Publishing
-После сохранения изменения публикуются автоматически в течение установленного времени.
+After saving, changes are published automatically within a set time frame.
