@@ -23,6 +23,7 @@ The platform must:
 - support restaurant information, hours, menus, prices, availability, and galleries;
 - enforce strict ownership boundaries for management operations;
 - begin with one restaurant while preserving a practical path to multiple restaurants;
+- keep the public menu reachable through a stable, direct, unauthenticated URL that can later be encoded into a QR code without requiring an architecture change (Phase 9);
 - support accessible and responsive experiences;
 - publish content consistently without exposing partial updates;
 - remain straightforward for a small team to develop and operate;
@@ -316,6 +317,7 @@ Requirements:
 - Draft and preview pages are not indexable.
 - Custom domains can resolve to the same application while producing tenant-correct canonical URLs.
 - Cache invalidation is driven by successful publication events.
+- The menu page's canonical URL stays constant across content/publication changes and requires no session or query state to resolve, so it can double as a future QR-code target (Phase 9, PR-26) without a URL-scheme change.
 
 ## 17. Performance and caching
 
@@ -500,6 +502,7 @@ Growth path:
 | Phase 6 — Search Visibility | Server-rendered published content, canonical domains, sitemap/robots, structured-data projections. |
 | Phase 7 — Multi-Restaurant | Restaurant-scoped records, memberships, host/slug resolver, custom domains, tenant-safe authorization. |
 | Phase 8 — Product Polish | Problem Details, observability, performance budgets, recovery, usability, and publication guarantees. |
+| Phase 9 — QR Code Menu Access (Future) | Reuses the existing stable, unauthenticated `/menu` canonical URL and public menu module; adds QR code generation/download in the owner dashboard. No new architecture required if the direct-link constraint in Section 2 is upheld. |
 
 ## 28. Phase 0 specification boundary
 

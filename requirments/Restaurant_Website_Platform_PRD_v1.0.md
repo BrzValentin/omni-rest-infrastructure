@@ -27,9 +27,11 @@ Build a modern platform for restaurants that lets owners manage their website in
 - add photos
 - manage the website without technical knowledge
 
-# Product Constraint
+# Product Constraints
 
 Although the MVP supports only a single restaurant, the product must be designed with future expansion to a multi-restaurant platform in mind, without requiring a full system redesign.
+
+The digital menu must remain reachable through a stable, direct, permanent URL that does not depend on navigating from the home page first (for example `/menu`, or a per-restaurant equivalent once multi-restaurant is live). A restaurant will be able to place a QR code (on tables, signage, or printed materials) that visitors scan with their phone camera to land directly on the menu section of the site. This QR-code concept will be implemented in a later phase (see Phase 9), but current development must not introduce anything — login walls, required session/cart state, client-only rendering, or unstable/query-dependent URLs — that would block adding it later without a redesign.
 
 ---
 
@@ -267,3 +269,20 @@ An owner without technical knowledge can:
 
 ### PR-25. Content Publishing
 After saving, changes are published automatically within a set time frame.
+
+---
+
+# Phase 9 — QR Code Menu Access (Future)
+
+## Goal
+Let visitors open the digital menu directly by scanning a QR code, without navigating the rest of the website first.
+
+### PR-26. QR Code Menu Access
+**Status:** Planned for a future phase, not part of the MVP scope. Current development must keep the menu page directly linkable so this can be added later without a redesign.
+
+**Acceptance Criteria**
+- The owner can generate a QR code that links directly to the restaurant's menu page.
+- Scanning the QR code opens the menu section of the site, not the home page.
+- The QR code links to a stable URL that keeps working across menu content updates.
+- The QR code image can be downloaded or printed by the owner for use on tables, signage, or printed materials.
+- The menu page opens correctly on scan without requiring login or app installation.
