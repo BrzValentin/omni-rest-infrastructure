@@ -36,3 +36,10 @@ src/frontend/test-results/
 src/frontend/playwright-report/
 src/frontend/blob-report/
 src/frontend/.playwright-cli/
+
+
+# Kolya specific files
+.claude
+RUN_LOCALLY_WINDOWS.md
+Winnipeg restorans website.zip
+local-dev.ps1 
