@@ -13,7 +13,8 @@ public sealed record PublicMenuResponse(
     string? TaxNoticeKey,
     string PublicationVersion,
     PublicMenu? Menu,
-    PublicRestaurantResponse? Restaurant = null);
+    PublicRestaurantResponse? Restaurant = null,
+    string? WebsiteDesignId = null);
 
 public sealed record PublicMenu(string Id, string Name, IReadOnlyList<PublicCategory> Categories);
 

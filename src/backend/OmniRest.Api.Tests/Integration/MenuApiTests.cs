@@ -60,6 +60,45 @@ public sealed class MenuApiTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task EverySeededMediaVariantResolvesFromConfiguredPublicPath()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        using var client = factory.CreateClient();
+
+        var publicMenu = await ReadForHostAsync(client, "menu.localhost");
+        var publishedVariantUrls = publicMenu.Menu!.Categories
+            .SelectMany(category => category.Dishes)
+            .SelectMany(dish => dish.Media?.Variants ?? [])
+            .Select(variant => variant.Url)
+            .ToArray();
+        Assert.NotEmpty(publishedVariantUrls);
+
+        IReadOnlyList<string> variantUrls;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            variantUrls = await dbContext.MediaVariants.AsNoTracking()
+                .OrderBy(item => item.Url)
+                .Select(item => item.Url)
+                .ToArrayAsync();
+        }
+
+        Assert.NotEmpty(variantUrls);
+        Assert.All(publishedVariantUrls, url => Assert.Contains(url, variantUrls));
+        Assert.All(variantUrls, url => Assert.StartsWith("/media/uploads/seed/", url, StringComparison.Ordinal));
+        foreach (var url in variantUrls)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Host = "menu.localhost";
+            using var response = await client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("image/webp", response.Content.Headers.ContentType?.MediaType);
+        }
+    }
+
+    [Fact]
     public async Task HostResolutionIsTenantSafeAndUnknownHostUsesProblemDetails()
     {
         using var factory = postgres.CreateFactory();

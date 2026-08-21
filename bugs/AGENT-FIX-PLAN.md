@@ -50,6 +50,7 @@ npm run test:e2e
 ## WO-01 · Seeded dish images are served from a path that does not exist
 
 - **id:** `WO-01` · **severity:** High · **defect:** BUG-022
+- **status:** Fixed 2026-08-20 — seed media integration test and full backend suite passed
 - **requirement:** PR-5 Task 8 — *"Images load correctly"*
 - **blocked_by:** none
 
@@ -119,6 +120,8 @@ Add to `src/backend/OmniRest.Api.Tests/Integration/MenuApiTests.cs`: after seedi
 
 **Files:** `src/frontend/app/page.tsx:19`
 
+- **status:** Fixed 2026-08-20 — hero priority renderer test and full frontend unit/build gates passed
+
 **Current behaviour**
 
 ```tsx
@@ -139,6 +142,7 @@ No `priority`, so Next.js lazy-loads the LCP element. Observed: the hero area re
 ## WO-03 · Public status never looks ahead to the next open day
 
 - **id:** `WO-03` · **severity:** Medium · **defect:** BUG-023 (and closes BUG-010)
+- **status:** Fixed 2026-08-20 — 27 status-calculator tests and full backend suite passed
 - **requirement:** PR-2 Task 2.12 — required states are `Open Now`, `Closed`, `Opens at HH:mm`, `Closes at HH:mm`
 - **blocked_by:** none
 
@@ -698,9 +702,9 @@ DEFERRED
 # Progress checklist
 
 ```
-[ ] WO-01  High    seeded dish images 404
-[ ] WO-02  Medium  hero image priority
-[ ] WO-03  Medium  status next-day look-ahead
+[x] WO-01  High    seeded dish images 404
+[x] WO-02  Medium  hero image priority
+[x] WO-03  Medium  status next-day look-ahead
 [ ] WO-04  Medium  stale special hours
 [ ] WO-05  High    SEO metadata
 [ ] WO-06  Medium  PR-9 requirements truncated      (decision)

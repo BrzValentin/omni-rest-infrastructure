@@ -23,6 +23,14 @@ const initial: AdminRestaurant = {
   specialHours: [{ id: "special", date: "2026-12-25", isClosed: true, note: "Holiday", intervals: [] }],
   socialLinks: [{ platform: "instagram", url: "https://instagram.com/example" }],
   mainImage: { id: "33333333-3333-3333-3333-333333333333", altText: "Dining room", processingStatus: "ready", variants: [{ url: "https://images.example.test/main.webp", width: 800, height: 600 }] },
+  draftDesignId: "legacy-current-v1", publishedDesignId: "legacy-current-v1",
+  websiteDesigns: [
+    { id: "legacy-current-v1", name: "Current design", contractVersion: "1", availability: "grandfathered" },
+    { id: "quiet-elegance-v1", name: "Quiet Elegance", contractVersion: "1", availability: "available" },
+    { id: "nightfall-v1", name: "Nightfall", contractVersion: "1", availability: "available" },
+    { id: "broadsheet-v1", name: "Broadsheet", contractVersion: "1", availability: "available" },
+    { id: "sunroom-v1", name: "Sunroom", contractVersion: "1", availability: "available" },
+  ],
   draftVersion: "3", eTag: '"draft-3"', publicationStatus: { operationId: "operation", status: "failed", draftVersion: "3", attemptCount: 2, errorCode: "projection_failed", updatedAt: "2026-07-31T12:00:00Z" },
 };
 const mutation: AdminMutation = { restaurant: initial, publication: initial.publicationStatus! };

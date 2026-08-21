@@ -147,6 +147,28 @@ test("real owner workflow persists and publishes every Phase 3 restaurant field"
   await expect(page.getByRole("img", { name: "Accessible real dining room" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
+  await page.goto("/admin/design");
+  await expect(page.getByRole("heading", { name: "Choose a design" })).toBeVisible();
+  await page.locator("article").filter({
+    has: page.getByRole("heading", { name: "Quiet Elegance", level: 3 }),
+  }).getByRole("button").click();
+  const designPreview = page.frameLocator('iframe[title="Quiet Elegance home draft preview"]');
+  await expect(designPreview.getByRole("heading", { name: "Real Prairie Kitchen" })).toBeVisible();
+  await expect(designPreview.getByText("Real full-stack seasonal kitchen.")).toBeVisible();
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(
+    page.frameLocator('iframe[title="Quiet Elegance menu draft preview"]').getByRole("heading", { level: 1, name: "Real Prairie Kitchen" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Use this design" }).click();
+  await page.getByRole("button", { name: "Confirm and publish" }).click();
+  await expect(page.getByText(/Quiet Elegance saved as the draft design/)).toBeVisible();
+
+  await page.goto("/");
+  await expect(page.locator('[data-website-design="quiet-elegance-v1"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Real Prairie Kitchen" })).toBeVisible();
+  await page.goto("/menu");
+  await expect(page.locator('[data-website-design="quiet-elegance-v1"]')).toBeVisible();
+
   await page.goto("/admin");
   await page.getByRole("button", { name: "Sign Out" }).click();
   await expect(page).toHaveURL(/\/admin\/login$/);

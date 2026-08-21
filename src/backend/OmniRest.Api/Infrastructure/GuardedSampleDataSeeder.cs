@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using OmniRest.Api.Data;
 using OmniRest.Api.Menus;
+using OmniRest.Api.Restaurants;
 
 namespace OmniRest.Api.Infrastructure;
 
@@ -17,6 +19,7 @@ public static class GuardedSampleDataSeeder
     public static readonly Guid LargeRestaurantId = Id("restaurant:large");
 
     private static readonly DateTimeOffset SeedTime = new(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+    private static readonly string[] SeedMediaFileNames = ["poutine-640.webp", "alternate-private.webp"];
 
     public static async Task SeedAsync(IServiceProvider services, IHostEnvironment environment, bool large)
     {
@@ -24,6 +27,8 @@ public static class GuardedSampleDataSeeder
         {
             throw new InvalidOperationException("Sample data is allowed only in Development or Testing.");
         }
+
+        await CopySeedMediaAsync(services, environment);
 
         await using var scope = services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
@@ -92,7 +97,7 @@ public static class GuardedSampleDataSeeder
             RestaurantId = restaurant.Id,
             MediaAssetId = media.Id,
             MediaAsset = media,
-            Url = "/media/seed/poutine-640.webp",
+            Url = "/media/uploads/seed/poutine-640.webp",
             Width = 640,
             Height = 480
         });
@@ -157,7 +162,7 @@ public static class GuardedSampleDataSeeder
             RestaurantId = restaurant.Id,
             MediaAssetId = privateMedia.Id,
             MediaAsset = privateMedia,
-            Url = "/media/seed/alternate-private.webp",
+            Url = "/media/uploads/seed/alternate-private.webp",
             Width = 640,
             Height = 480
         });
@@ -165,6 +170,31 @@ public static class GuardedSampleDataSeeder
         AddBadges(dbContext, restaurant);
         dbContext.Restaurants.Add(restaurant);
         AddPublication(dbContext, restaurant, menu, builder, serializer, 3);
+    }
+
+    private static async Task CopySeedMediaAsync(IServiceProvider services, IHostEnvironment environment)
+    {
+        var storage = services.GetRequiredService<IOptions<LocalMediaStorageOptions>>().Value;
+        var mediaRoot = storage.LocalRoot ?? throw new InvalidOperationException("Seed media requires a configured local media root.");
+        var sourceRoot = Path.Combine(environment.ContentRootPath, "seed-media");
+        var destinationRoot = Path.Combine(mediaRoot, "seed");
+        Directory.CreateDirectory(destinationRoot);
+
+        foreach (var fileName in SeedMediaFileNames)
+        {
+            var sourcePath = Path.Combine(sourceRoot, fileName);
+            if (!File.Exists(sourcePath))
+            {
+                throw new FileNotFoundException("A required seed media file is missing.", sourcePath);
+            }
+
+            var destinationPath = Path.Combine(destinationRoot, fileName);
+            await using var source = new FileStream(
+                sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
+            await using var destination = new FileStream(
+                destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
+            await source.CopyToAsync(destination);
+        }
     }
 
     private static void AddLargeRestaurant(MenuDbContext dbContext, PublicMenuProjectionBuilder builder, PublicMenuSnapshotSerializer serializer)

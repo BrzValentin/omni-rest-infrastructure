@@ -33,6 +33,7 @@ public sealed record AdminSocialLinkRequest(string Platform, string Url);
 public sealed record UpdateSocialLinksRequest(IReadOnlyList<AdminSocialLinkRequest> Links);
 public sealed record SelectMainImageRequest(Guid? MediaAssetId);
 public sealed record UpdateMediaAltTextRequest(string AltText);
+public sealed record UpdateWebsiteDesignRequest(string DesignId);
 
 public sealed record AdminAddressResponse(
     string Line1,
@@ -54,6 +55,11 @@ public sealed record AdminSpecialHoursResponse(
 public sealed record AdminSocialLinkResponse(string Platform, string Url);
 public sealed record AdminMainImageResponse(string Id, string AltText, string ProcessingStatus, IReadOnlyList<PublicMediaVariant> Variants);
 public sealed record AdminMediaAssetResponse(string Id, string AltText, string ProcessingStatus, IReadOnlyList<PublicMediaVariant> Variants);
+public sealed record AdminWebsiteDesignResponse(
+    string Id,
+    string Name,
+    string ContractVersion,
+    string Availability);
 public sealed record PublicationStatusResponse(
     string OperationId,
     string Status,
@@ -75,6 +81,9 @@ public sealed record AdminRestaurantResponse(
     IReadOnlyList<AdminSpecialHoursResponse> SpecialHours,
     IReadOnlyList<AdminSocialLinkResponse> SocialLinks,
     AdminMainImageResponse? MainImage,
+    string DraftDesignId,
+    string PublishedDesignId,
+    IReadOnlyList<AdminWebsiteDesignResponse> WebsiteDesigns,
     string DraftVersion,
     string ETag,
     PublicationStatusResponse? PublicationStatus);

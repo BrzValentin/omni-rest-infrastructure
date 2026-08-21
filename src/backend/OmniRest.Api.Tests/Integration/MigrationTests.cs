@@ -18,7 +18,7 @@ public sealed class MigrationTests(PostgresFixture postgres)
 
         var pending = await context.Database.GetPendingMigrationsAsync();
         Assert.Empty(pending);
-        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(6, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -162,6 +162,7 @@ public sealed class MigrationTests(PostgresFixture postgres)
             """
             SELECT restaurant.draft_version,
                    settings.time_zone_id,
+                   settings.website_design_id,
                    publication.snapshot #>> '{restaurant,name}'
             FROM public.restaurants AS restaurant
             JOIN public.restaurant_settings AS settings ON settings.restaurant_id = restaurant.id
@@ -171,7 +172,45 @@ public sealed class MigrationTests(PostgresFixture postgres)
         Assert.True(await reader.ReadAsync());
         Assert.Equal(7, reader.GetInt64(0));
         Assert.Equal("America/Winnipeg", reader.GetString(1));
-        Assert.Equal("Preserved Restaurant", reader.GetString(2));
+        Assert.Equal("legacy-current-v1", reader.GetString(2));
+        Assert.Equal("Preserved Restaurant", reader.GetString(3));
+    }
+
+    [Fact]
+    public async Task LatestUpgradeRepairsLegacyPublicationOutboxStatusConstraint()
+    {
+        await using var context = CreateContext();
+        await context.Database.EnsureDeletedAsync();
+        var migrator = context.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260820045841_WebsiteDesignSelection");
+
+        await using (var connection = new NpgsqlConnection(postgres.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var legacyConstraint = new NpgsqlCommand(
+                """
+                ALTER TABLE public.publication_outbox
+                  DROP CONSTRAINT ck_publication_outbox_status;
+                ALTER TABLE public.publication_outbox
+                  ADD CONSTRAINT ck_publication_outbox_status
+                  CHECK (status IN ('pending', 'succeeded', 'failed'));
+                """, connection);
+            await legacyConstraint.ExecuteNonQueryAsync();
+        }
+
+        await migrator.MigrateAsync();
+
+        await using var verify = new NpgsqlConnection(postgres.ConnectionString);
+        await verify.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = 'public.publication_outbox'::regclass
+              AND conname = 'ck_publication_outbox_status';
+            """, verify);
+        var definition = Assert.IsType<string>(await command.ExecuteScalarAsync());
+        Assert.Contains("'processing'", definition, StringComparison.Ordinal);
     }
 
     private MenuDbContext CreateContext()

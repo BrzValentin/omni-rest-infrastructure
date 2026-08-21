@@ -16,7 +16,7 @@ export function MenuLink({ children, className }: MenuLinkProps) {
 
   return (
     <>
-      <Link className={className} href="/menu" onClick={() => setLoading(true)}>
+      <Link className={className} href="/menu" prefetch={false} onClick={() => setLoading(true)}>
         {children}
       </Link>
       {loading ? (

@@ -1,0 +1,82 @@
+.sunroom-v1__shell { min-height: 100vh; background: #f2eee7; color: #2b2b28; font-family: ui-rounded, "Arial Rounded MT Bold", ui-sans-serif, system-ui, sans-serif; }
+.sunroom-v1__skipLink { position: fixed; z-index: 50; top: .5rem; left: .5rem; padding: .75rem 1rem; border-radius: 2rem; background: #2b2b28; color: #fff; transform: translateY(-150%); }
+.sunroom-v1__skipLink:focus { transform: translateY(0); }
+.sunroom-v1__header { display: flex; width: min(100% - 2rem, 80rem); min-height: 5rem; margin-inline: auto; align-items: center; justify-content: space-between; gap: 1rem; }
+.sunroom-v1__brand { color: inherit; font-size: clamp(1.2rem, 3vw, 1.8rem); font-weight: 850; text-decoration: none; overflow-wrap: anywhere; }
+.sunroom-v1__navLink { display: grid; min-width: 4.5rem; min-height: 2.75rem; place-items: center; padding-inline: 1.1rem; border-radius: 999px; background: #e8735a; color: #211611; font-weight: 800; text-decoration: none; }
+.sunroom-v1__homeMain, .sunroom-v1__menuMain { width: min(100% - 2rem, 80rem); margin-inline: auto; }
+.sunroom-v1__hero { position: relative; display: grid; min-height: min(43rem, calc(100vh - 6rem)); grid-template-columns: minmax(0, 1.05fr) minmax(18rem, .95fr); align-items: center; gap: clamp(2rem, 6vw, 6rem); padding: clamp(2rem, 6vw, 6rem); border-radius: 2.5rem; background: #dce7e9; overflow: hidden; }
+.sunroom-v1__sunShape { position: absolute; width: 18rem; height: 18rem; top: -7rem; left: 42%; border-radius: 50%; background: #f2c84b; opacity: .85; }
+.sunroom-v1__heroCopy { position: relative; z-index: 1; }
+.sunroom-v1__eyebrow { margin: 0 0 1rem; color: #a43a27; font-size: .78rem; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+.sunroom-v1__hero h1, .sunroom-v1__menuHero h1 { margin: 0; font-size: clamp(3.4rem, 10vw, 8rem); font-weight: 900; letter-spacing: -.075em; line-height: .83; overflow-wrap: anywhere; }
+.sunroom-v1__intro { max-width: 35rem; margin: 1.5rem 0 0; font-size: 1.1rem; line-height: 1.65; }
+.sunroom-v1__status { width: fit-content; padding: .35rem .7rem; border-radius: 999px; background: #fff; color: #6f281c; font-size: .8rem; font-weight: 800; }
+.sunroom-v1__actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.5rem; }
+.sunroom-v1__primaryAction, .sunroom-v1__secondaryAction { display: inline-flex; min-height: 2.75rem; align-items: center; padding: .75rem 1.1rem; border: 2px solid #2b2b28; border-radius: 999px; color: inherit; font-weight: 800; text-decoration: none; }
+.sunroom-v1__primaryAction { border-color: #e8735a; background: #e8735a; }
+.sunroom-v1__heroImage { position: relative; z-index: 1; width: 100%; height: min(28rem, 52vw); min-height: 20rem; border: .65rem solid #fff; border-radius: 48% 48% 2rem 2rem; object-fit: cover; transform: rotate(1.5deg); }
+.sunroom-v1__detailsGrid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 1.5rem; padding-block: 2.5rem; }
+.sunroom-v1__hoursSection, .sunroom-v1__detailSection, .sunroom-v1__specialSection { padding: clamp(1.5rem, 4vw, 3rem); border-radius: 1.5rem; }
+.sunroom-v1__hoursSection { background: #fff; }
+.sunroom-v1__detailSection { background: #f5c8bd; }
+.sunroom-v1__specialSection { background: #dce7e9; }
+.sunroom-v1__hoursSection h2, .sunroom-v1__detailSection h2, .sunroom-v1__specialSection h2 { margin: 0 0 1rem; font-size: .8rem; letter-spacing: .13em; text-transform: uppercase; }
+.sunroom-v1__hoursSection dl { margin: 0; }
+.sunroom-v1__hoursSection dl > div { display: flex; justify-content: space-between; gap: 1rem; padding-block: .55rem; border-bottom: 1px solid #d9d4cc; }
+.sunroom-v1__hoursSection dd { margin: 0; text-align: right; }
+.sunroom-v1__detailSection address { margin-bottom: 1rem; font-size: clamp(1.4rem, 3vw, 2.5rem); font-style: normal; font-weight: 800; line-height: 1.1; }
+.sunroom-v1__textLink, .sunroom-v1__socialLinks a { color: #772c20; font-weight: 800; }
+.sunroom-v1__socialLinks { display: flex; flex-wrap: wrap; gap: 1rem; padding-block: 2.5rem; }
+.sunroom-v1__socialLinks a { padding: .6rem .9rem; border: 1px solid #c8c2b8; border-radius: 999px; }
+.sunroom-v1__footer { width: min(100% - 2rem, 80rem); margin-inline: auto; padding-block: 2rem; color: #625e56; font-size: .78rem; font-weight: 800; }
+.sunroom-v1__footer p { margin: 0; }
+.sunroom-v1__menuMain { padding-block: 1rem 5rem; }
+.sunroom-v1__menuHero { position: relative; padding: clamp(3rem, 8vw, 7rem); border-radius: 2rem; background: #f5c8bd; overflow: hidden; }
+.sunroom-v1__menuHero::after { position: absolute; width: 14rem; height: 14rem; right: -4rem; bottom: -7rem; border-radius: 50%; background: #f2c84b; content: ""; }
+.sunroom-v1__menuHero > * { position: relative; z-index: 1; }
+.sunroom-v1__menuHero > p:last-child { font-size: 1.25rem; font-weight: 750; }
+.sunroom-v1__notice, .sunroom-v1__stateCard, .sunroom-v1__disclaimer { margin: 1.5rem 0; padding: 1rem 1.25rem; border-radius: 1rem; background: #fff; }
+.sunroom-v1__browser { min-width: 0; }
+.sunroom-v1__categoryNav { position: sticky; z-index: 5; top: 0; padding-block: .6rem; background: rgb(242 238 231 / 96%); }
+.sunroom-v1__categoryStrip { display: flex; gap: .6rem; overflow-x: auto; padding: .3rem 0; }
+.sunroom-v1__categoryLink { display: inline-flex; min-width: max-content; min-height: 2.75rem; align-items: center; padding: .7rem 1rem; border: 2px solid #2b2b28; border-radius: 999px; color: inherit; font-weight: 800; text-decoration: none; }
+.sunroom-v1__categoryLink[data-selected="true"] { border-color: #e8735a; background: #e8735a; }
+.sunroom-v1__panels { padding-top: 2rem; }
+.sunroom-v1__panel[hidden] { display: none; }
+.sunroom-v1__categoryHeading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding: 1.5rem 0; }
+.sunroom-v1__categoryHeading h2 { margin: 0; font-size: clamp(2.5rem, 7vw, 5.5rem); letter-spacing: -.055em; line-height: .9; }
+.sunroom-v1__categoryHeading p { max-width: 34rem; margin: 0; }
+.sunroom-v1__emptyCategory { min-height: 7rem; padding: 2rem; border: 2px dashed #aaa297; border-radius: 1.5rem; }
+.sunroom-v1__dishGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.sunroom-v1__dishCard { display: grid; min-width: 0; grid-template-columns: minmax(8rem, .8fr) minmax(0, 1.2fr); border-radius: 1.5rem; background: #fff; overflow: hidden; box-shadow: 0 .5rem 1.5rem rgb(43 43 40 / 8%); }
+.sunroom-v1__unavailableCard { opacity: .65; }
+.sunroom-v1__mediaFrame, .sunroom-v1__mediaPlaceholder { min-height: 12rem; background: #dce7e9; overflow: hidden; }
+.sunroom-v1__mediaFrame img { width: 100%; height: 100%; object-fit: cover; }
+.sunroom-v1__mediaPlaceholder { display: grid; place-items: center; color: #a43a27; font-size: 2.4rem; }
+.sunroom-v1__dishBody { min-width: 0; padding: 1.35rem; }
+.sunroom-v1__dishHeading { display: flex; align-items: start; justify-content: space-between; gap: .75rem; }
+.sunroom-v1__dishHeading h3, .sunroom-v1__price { margin: 0; }
+.sunroom-v1__dishHeading h3 { font-size: 1.3rem; overflow-wrap: anywhere; }
+.sunroom-v1__price { flex: 0 0 auto; color: #772c20; font-weight: 850; }
+.sunroom-v1__description { color: #5e5b54; font-size: .92rem; line-height: 1.55; }
+.sunroom-v1__unavailable { color: #8d2718; font-size: .72rem; font-weight: 850; text-transform: uppercase; }
+.sunroom-v1__badges { display: flex; flex-wrap: wrap; gap: .35rem; padding: 0; list-style: none; }
+.sunroom-v1__badge { padding: .3rem .5rem; border-radius: 999px; background: #dce7e9; color: #294d53; font-size: .68rem; font-weight: 800; }
+.sunroom-v1__allergenBadge { background: #f5c8bd; color: #772c20; }
+.sunroom-v1__disclaimer { color: #5e5b54; font-size: .82rem; }
+.sunroom-v1__shell :focus-visible { outline: .2rem solid #17637b; outline-offset: .2rem; }
+@media (max-width: 60rem) { .sunroom-v1__dishGrid { grid-template-columns: 1fr; } }
+@media (max-width: 52rem) {
+  .sunroom-v1__hero, .sunroom-v1__detailsGrid { grid-template-columns: 1fr; }
+  .sunroom-v1__hero { padding: 1.5rem; }
+  .sunroom-v1__heroImage { height: 20rem; }
+  .sunroom-v1__categoryHeading { align-items: start; flex-direction: column; gap: .75rem; }
+}
+@media (max-width: 34rem) {
+  .sunroom-v1__header { align-items: flex-start; padding-block: 1rem; }
+  .sunroom-v1__dishCard { grid-template-columns: 1fr; }
+  .sunroom-v1__hoursSection dl > div { align-items: flex-start; flex-direction: column; gap: .2rem; }
+  .sunroom-v1__hoursSection dd { text-align: left; }
+}
+@media (forced-colors: active) { .sunroom-v1__primaryAction, .sunroom-v1__categoryLink[data-selected="true"] { border: 2px solid ButtonText; } }

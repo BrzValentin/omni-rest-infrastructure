@@ -9,7 +9,7 @@
 .adminMain { width: min(72rem, calc(100% - 2rem)); margin: 0 auto; padding: clamp(2rem, 5vw, 5rem) 0; }
 .eyebrow { color: #47685b; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .primaryLink, .primaryButton { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; border: 0; border-radius: .45rem; padding: .65rem 1rem; background: #244f40; color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
-.primaryButton:disabled { cursor: wait; opacity: .65; }
+.primaryButton:disabled { cursor: not-allowed; opacity: .65; }
 .centered { min-height: 100vh; display: grid; place-items: center; padding: 1.25rem; background: #f7f4ed; color: #222018; }
 .loginCard { width: min(100%, 28rem); padding: clamp(1.5rem, 5vw, 3rem); border: 1px solid #d7d0c1; border-radius: 1rem; background: #fff; box-shadow: 0 .8rem 2.5rem rgb(31 43 37 / 10%); }
 .loginCard form { display: grid; gap: .65rem; margin-top: 1.5rem; }
@@ -60,5 +60,49 @@
 .hoursList > div { display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr; gap: 1rem; padding-block: .45rem; border-bottom: 1px solid #e4ded2; }
 .hoursList dt { font-weight: 800; }.hoursList dd { margin: 0; }
 .socialLinks { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 2rem; }
+.designMain { width: min(92rem, calc(100% - 2rem)); margin: 0 auto; padding: clamp(2rem, 5vw, 5rem) 0; }
+.designHeading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; }
+.designHeading h1 { margin-block: .25rem .75rem; font-size: clamp(2.2rem, 5vw, 4rem); }
+.designHeading p { max-width: 48rem; line-height: 1.6; }
+.designStatus { display: flex; flex-wrap: wrap; gap: .5rem 2rem; margin: 1.5rem 0; padding: 1rem 1.25rem; border: 1px solid #cabf9e; border-radius: .75rem; background: #fff9dd; }
+.designStatus p { margin: 0; }
+.designStatus p:last-child:not(:nth-child(2)) { flex-basis: 100%; }
+.designWorkspace { display: grid; grid-template-columns: minmax(19rem, .72fr) minmax(28rem, 1.28fr); align-items: start; gap: 2rem; }
+.designGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.designCard { min-width: 0; border: 2px solid transparent; border-radius: 1rem; background: #fff; overflow: hidden; box-shadow: 0 .5rem 1.5rem rgb(31 43 37 / 8%); }
+.designCard[data-selected="true"] { border-color: #244f40; }
+.designCardBody { display: grid; gap: .8rem; padding: 1rem; }
+.designCardBody p { margin: 0; color: #4b4942; line-height: 1.45; }
+.designCardTitle { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.designCardTitle h3 { margin: 0; }
+.publishedBadge { flex: 0 0 auto; padding: .3rem .5rem; border-radius: 999px; background: #d8eadf; color: #173c2f; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.designThumbnail { position: relative; display: grid; height: 10.5rem; grid-template-columns: 1.2fr .8fr; grid-template-rows: 1.5rem 1fr .3rem 1fr 2rem; gap: .45rem; padding: 1rem; background: var(--thumb-bg); color: var(--thumb-fg); overflow: hidden; }
+.designThumbnail span { display: block; background: currentColor; opacity: .9; }
+.thumbnailMasthead { grid-column: 1 / -1; width: 50%; height: .45rem; }
+.thumbnailTitle { grid-column: 1; width: 85%; height: 65%; align-self: end; }
+.thumbnailRule { grid-column: 1 / -1; height: 1px; }
+.thumbnailCopy { grid-column: 1; width: 72%; height: 45%; }
+.thumbnailImage { grid-column: 2; grid-row: 2 / 5; opacity: .45 !important; }
+.thumbnailButton { grid-column: 1; width: 55%; border-radius: var(--thumb-radius); background: var(--thumb-accent) !important; }
+.designThumbnail_quiet { --thumb-bg: #f7f5f1; --thumb-fg: #191917; --thumb-accent: #6f7a68; --thumb-radius: 0; }
+.designThumbnail_night { --thumb-bg: #0e0f0d; --thumb-fg: #f2efe6; --thumb-accent: #c9a227; --thumb-radius: 0; }
+.designThumbnail_news { --thumb-bg: #f4f1e8; --thumb-fg: #23211e; --thumb-accent: #b03a2e; --thumb-radius: 0; }
+.designThumbnail_sun { --thumb-bg: #dce7e9; --thumb-fg: #2b2b28; --thumb-accent: #e8735a; --thumb-radius: 999px; }
+.designThumbnail_legacy { --thumb-bg: #f7f4ed; --thumb-fg: #213b32; --thumb-accent: #d07b24; --thumb-radius: .3rem; }
+.designPreviewSection { position: sticky; top: 1rem; min-width: 0; }
+.designPreviewToolbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.designPreviewToolbar h2 { margin: .2rem 0 0; }
+.designPreviewToolbar fieldset { display: flex; gap: .35rem; margin: 0; padding: .3rem; border: 1px solid #aaa297; border-radius: .6rem; }
+.designPreviewToolbar legend { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.designPreviewToolbar button { min-height: 2.75rem; padding: .55rem .75rem; border: 0; border-radius: .35rem; background: transparent; color: #222018; font: inherit; font-weight: 700; cursor: pointer; }
+.designPreviewToolbar button[aria-pressed="true"] { background: #244f40; color: #fff; }
+.designPreviewFrame { display: flex; width: 100%; min-height: 38rem; justify-content: center; padding: .75rem; border: 1px solid #bcb4a6; border-radius: .8rem; background: #d8d3ca; overflow: auto; }
+.designPreviewFrame iframe { width: 100%; height: 44rem; border: 0; background: #fff; box-shadow: 0 .5rem 2rem rgb(20 25 22 / 18%); transition: width .2s ease; }
+.designPreviewDesktop iframe { max-width: 78rem; }
+.designPreviewMobile iframe { width: 23.5rem; max-width: 100%; }
+.designActionRow { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
 .loginCard :focus-visible, .adminShell :focus-visible { outline: .2rem solid #d07b24; outline-offset: .15rem; }
+@media (prefers-reduced-motion: reduce) { .designPreviewFrame iframe { transition: none; } }
+@media (max-width: 70rem) { .designWorkspace { grid-template-columns: 1fr; } .designPreviewSection { position: static; } }
 @media (max-width: 48rem) { .formGrid, .hoursGrid { grid-template-columns: 1fr; } .adminHeader, .editorHeading { align-items: flex-start; flex-direction: column; } .intervalRow { grid-template-columns: 1fr 1fr; } .intervalRow button { grid-column: 1 / -1; } }
+@media (max-width: 48rem) { .designHeading { align-items: flex-start; flex-direction: column; } .designGrid { grid-template-columns: 1fr; } .designPreviewFrame { min-height: 31rem; padding: .4rem; } .designPreviewFrame iframe { height: 38rem; } }

@@ -23,6 +23,8 @@ internal static class AdminRestaurantEndpoints
             .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("SelectMainImage");
         admin.MapDelete("/restaurant/main-image", RemoveMainImageAsync)
             .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("RemoveMainImage");
+        admin.MapPut("/restaurant/design", UpdateWebsiteDesignAsync)
+            .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("UpdateWebsiteDesign");
         admin.MapGet("/media-assets", ListReadyMediaAsync).WithName("ListReadyMediaAssets");
         admin.MapPost("/media-assets", UploadMediaAsync)
             .AddEndpointFilter<AntiforgeryEndpointFilter>()
@@ -31,6 +33,8 @@ internal static class AdminRestaurantEndpoints
         admin.MapPut("/media-assets/{id:guid}/alt-text", UpdateMediaAltTextAsync)
             .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("UpdateMediaAltText");
         admin.MapGet("/restaurant/preview", PreviewAsync).WithName("PreviewRestaurantDraft");
+        admin.MapGet("/website-designs/{designId}/preview", PreviewWebsiteDesignAsync)
+            .WithName("PreviewWebsiteDesignDraft");
 
         admin.MapGet("/special-hours", ReadSpecialHoursAsync).WithName("GetSpecialHours");
         admin.MapPost("/special-hours", CreateSpecialHoursAsync)
@@ -133,6 +137,24 @@ internal static class AdminRestaurantEndpoints
             principal, httpRequest, response, ownerContext, service,
             (access, etag) => service.SelectMainImageAsync(access, etag, new SelectMainImageRequest(null), cancellationToken), cancellationToken);
 
+    private static Task<IResult> UpdateWebsiteDesignAsync(
+        UpdateWebsiteDesignRequest? request,
+        ClaimsPrincipal principal,
+        HttpRequest httpRequest,
+        HttpResponse response,
+        IOwnerRestaurantContext ownerContext,
+        IRestaurantManagementService service,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return Task.FromResult<IResult>(ApiProblems.Validation(
+                new Dictionary<string, string[]> { ["request"] = ["request_required"] }));
+        }
+        return MutateAsync(principal, httpRequest, response, ownerContext, service,
+            (access, etag) => service.UpdateWebsiteDesignAsync(access, etag, request, cancellationToken), cancellationToken);
+    }
+
     private static async Task<IResult> ListReadyMediaAsync(
         ClaimsPrincipal principal,
         IOwnerRestaurantContext ownerContext,
@@ -190,6 +212,22 @@ internal static class AdminRestaurantEndpoints
         response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
         response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
         return ToHttpResult(await service.PreviewAsync(access, cancellationToken));
+    }
+
+    private static async Task<IResult> PreviewWebsiteDesignAsync(
+        string designId,
+        ClaimsPrincipal principal,
+        HttpResponse response,
+        IOwnerRestaurantContext ownerContext,
+        IRestaurantManagementService service,
+        CancellationToken cancellationToken)
+    {
+        var access = await ownerContext.ResolveAsync(principal, cancellationToken);
+        if (access is null) return TypedResults.Forbid();
+        response.Headers.CacheControl = "private, no-store";
+        response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
+        response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+        return ToHttpResult(await service.PreviewWebsiteDesignAsync(access, designId, cancellationToken));
     }
 
     private static async Task<IResult> ReadSpecialHoursAsync(

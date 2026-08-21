@@ -132,6 +132,7 @@ The owner can change:
 - special operating hours
 - social media links
 - main image
+- website design
 
 Supported platforms:
 - Instagram
@@ -140,6 +141,23 @@ Supported platforms:
 - Google Business Profile
 
 After saving, changes are published automatically.
+
+#### Website Design Selection
+
+The owner can choose from predefined website designs in the management area.
+
+**Acceptance Criteria**
+- view the available designs
+- see which design is currently published
+- preview a selected design with the restaurant's own content
+- preview desktop and mobile presentation
+- change the preview without affecting the public website
+- apply and publish the selected design after confirmation
+- keep the last successfully published design active if publication fails
+- switch between available designs without developer assistance or a new deployment
+- preserve the same restaurant information, menu content, and supported customer actions when changing designs
+
+Adding a new design or a new design version requires a product release. Selecting an already available design does not.
 
 ### PR-10. Phone Interaction
 **Acceptance Criteria**

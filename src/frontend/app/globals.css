@@ -41,67 +41,137 @@ button {
   outline-offset: 0.2rem;
 }
 
-.homeMain {
+.publicShell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 5%, rgb(215 171 95 / 18%), transparent 27rem),
+    var(--colour-canvas);
+}
+
+.publicSkipLink {
+  position: fixed;
+  z-index: 20;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--colour-ink);
+  color: var(--colour-surface);
+  transform: translateY(-150%);
+}
+
+.publicSkipLink:focus {
+  transform: translateY(0);
+}
+
+.publicHeader {
+  display: flex;
+  width: min(100% - 2rem, 76rem);
+  min-height: 4.5rem;
+  margin-inline: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--colour-line);
+}
+
+.publicBrand,
+.publicNavLink {
+  color: var(--colour-ink);
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.publicBrand {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.publicBrandMark {
   display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--colour-accent);
+  color: var(--colour-accent-ink);
+  font-family: Georgia, serif;
+  font-size: 0.8rem;
+}
+
+.publicNavLink {
+  display: inline-grid;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+  padding-inline: 0.75rem;
+  border-radius: 999px;
+}
+
+.publicNavLink:hover {
+  background: var(--colour-surface-muted);
+}
+
+.publicFooter {
+  width: min(100% - 2rem, 76rem);
+  margin: 4rem auto 0;
+  padding-block: 1.5rem 2rem;
+  border-top: 1px solid var(--colour-line);
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+}
+
+.publicFooter p {
+  margin: 0;
+}
+
+.publicMenuMain {
   width: min(100% - 2rem, 76rem);
   min-height: 70vh;
   margin-inline: auto;
-  place-items: center;
-  padding-block: 3rem;
+  padding-block: clamp(2.25rem, 7vw, 5.5rem);
 }
 
-.homeCard {
-  width: min(100%, 44rem);
-  padding: clamp(1.5rem, 7vw, 4rem);
+.publicStateCard {
+  max-width: 44rem;
+  margin-top: 2.5rem;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
   border: 1px solid var(--colour-line);
   border-radius: 1rem;
   background: var(--colour-surface);
 }
 
-.homeCard h1 {
-  margin: 0;
-  font-family: Georgia, serif;
-  font-size: clamp(2.5rem, 10vw, 5rem);
-  font-weight: 500;
-  line-height: 1;
+.publicStateCard h1,
+.publicStateCard h2,
+.publicStateCard p {
+  margin-top: 0;
 }
 
-.homeCard p:not(.eyebrow) {
-  color: var(--colour-muted);
-  font-size: 1.1rem;
-  line-height: 1.6;
+.publicStateCard p:last-child {
+  margin-bottom: 0;
 }
 
-.eyebrow {
-  margin: 0 0 0.75rem;
-  color: var(--colour-accent-strong);
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.primaryLink {
-  display: inline-grid;
+.publicRetryButton {
+  min-width: 7rem;
   min-height: 2.75rem;
-  place-items: center;
-  padding-inline: 1rem;
+  padding: 0.65rem 1rem;
+  border: 0;
   border-radius: 999px;
   background: var(--colour-ink);
   color: var(--colour-surface);
+  font: inherit;
   font-weight: 800;
-  text-decoration: none;
+  cursor: pointer;
 }
 
-.homeActions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
-.restaurantStatus { margin-block: 1rem 0; }
-.restaurantAddress { display: grid; gap: .4rem; margin-top: 1.5rem; color: var(--colour-muted); font-style: normal; }
-.restaurantAddress a { width: fit-content; color: var(--colour-accent-strong); font-weight: 700; }
-.homeImage { width: calc(100% + clamp(3rem, 14vw, 8rem)); max-width: none; height: auto; margin: calc(clamp(1.5rem, 7vw, 4rem) * -1) calc(clamp(1.5rem, 7vw, 4rem) * -1) 2rem; border-radius: 1rem 1rem 0 0; object-fit: cover; }
-.publicHours > div { display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr; gap: 1rem; padding-block: .4rem; border-bottom: 1px solid var(--colour-line); }
-.publicHours dt { font-weight: 800; }.publicHours dd { margin: 0; }
-.publicSocial { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
-.publicSocial a { color: var(--colour-accent-strong); font-weight: 700; text-transform: capitalize; }
+.publicRetryButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
 
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -112,5 +182,9 @@ button {
 @media (forced-colors: active) {
   :focus-visible {
     outline-color: Highlight;
+  }
+
+  .publicBrandMark {
+    border: 1px solid CanvasText;
   }
 }
