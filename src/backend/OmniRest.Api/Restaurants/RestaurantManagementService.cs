@@ -30,7 +30,9 @@ public interface IRestaurantManagementService
     Task<ManagementResult<AdminMutationResponse>> ReplaceSocialLinksAsync(OwnerRestaurantAccess access, string? etag, UpdateSocialLinksRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<AdminMutationResponse>> SelectMainImageAsync(OwnerRestaurantAccess access, string? etag, SelectMainImageRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<AdminMutationResponse>> UpdateMediaAltTextAsync(OwnerRestaurantAccess access, Guid id, string? etag, UpdateMediaAltTextRequest request, CancellationToken cancellationToken);
+    Task<ManagementResult<AdminMutationResponse>> UpdateWebsiteDesignAsync(OwnerRestaurantAccess access, string? etag, UpdateWebsiteDesignRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<PublicRestaurantResponse>> PreviewAsync(OwnerRestaurantAccess access, CancellationToken cancellationToken);
+    Task<ManagementResult<PublicMenuResponse>> PreviewWebsiteDesignAsync(OwnerRestaurantAccess access, string designId, CancellationToken cancellationToken);
     Task<ManagementResult<PublicationStatusResponse>> GetPublicationStatusAsync(OwnerRestaurantAccess access, Guid operationId, CancellationToken cancellationToken);
     Task<ManagementResult<PublicationStatusResponse>> RetryPublicationAsync(OwnerRestaurantAccess access, Guid operationId, CancellationToken cancellationToken);
 }
@@ -235,6 +237,26 @@ public sealed class RestaurantManagementService(
         return null;
     }, cancellationToken);
 
+    public Task<ManagementResult<AdminMutationResponse>> UpdateWebsiteDesignAsync(
+        OwnerRestaurantAccess access,
+        string? etag,
+        UpdateWebsiteDesignRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!WebsiteDesignCatalog.IsSelectable(request.DesignId))
+        {
+            return Task.FromResult(ManagementResult<AdminMutationResponse>.Failed(WebsiteDesignUnavailable()));
+        }
+
+        return MutateAsync(access, etag, "restaurant.website_design.updated", async (restaurant, _) =>
+        {
+            restaurant.Settings.WebsiteDesignId = request.DesignId;
+            restaurant.Settings.ConcurrencyVersion++;
+            await Task.CompletedTask;
+            return null;
+        }, cancellationToken);
+    }
+
     public async Task<ManagementResult<PublicRestaurantResponse>> PreviewAsync(
         OwnerRestaurantAccess access,
         CancellationToken cancellationToken)
@@ -247,6 +269,27 @@ public sealed class RestaurantManagementService(
         var menu = restaurant.Menus.SingleOrDefault(item => item.IsActive);
         var response = projectionBuilder.Build(restaurant, menu, restaurant.DraftVersion).Restaurant!;
         return ManagementResult<PublicRestaurantResponse>.Success(response);
+    }
+
+    public async Task<ManagementResult<PublicMenuResponse>> PreviewWebsiteDesignAsync(
+        OwnerRestaurantAccess access,
+        string designId,
+        CancellationToken cancellationToken)
+    {
+        if (!WebsiteDesignCatalog.IsSupported(designId))
+        {
+            return ManagementResult<PublicMenuResponse>.Failed(WebsiteDesignUnavailable());
+        }
+
+        var restaurant = await LoadAggregateAsync(access.RestaurantId, tracking: false, cancellationToken);
+        if (restaurant is null)
+        {
+            return ManagementResult<PublicMenuResponse>.Failed(NotFound());
+        }
+
+        var menu = restaurant.Menus.SingleOrDefault(item => item.IsActive);
+        return ManagementResult<PublicMenuResponse>.Success(
+            projectionBuilder.Build(restaurant, menu, restaurant.DraftVersion, designId));
     }
 
     public async Task<ManagementResult<PublicationStatusResponse>> GetPublicationStatusAsync(
@@ -266,22 +309,57 @@ public sealed class RestaurantManagementService(
         Guid operationId,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var restaurantDraftVersion = await PublicationOrdering.LockRestaurantDraftVersionAsync(
+            dbContext, access.RestaurantId, cancellationToken);
         var item = await dbContext.PublicationOutbox.SingleOrDefaultAsync(
             value => value.OperationId == operationId && value.RestaurantId == access.RestaurantId, cancellationToken);
         if (item is null)
         {
+            await transaction.RollbackAsync(cancellationToken);
             return ManagementResult<PublicationStatusResponse>.Failed(NotFound());
+        }
+        if (item.Status == PublicationStatuses.Succeeded)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ManagementResult<PublicationStatusResponse>.Success(ToPublicationStatus(item));
+        }
+        var currentPublicationVersion = await dbContext.Publications.AsNoTracking()
+            .Where(value => value.RestaurantId == access.RestaurantId && value.IsCurrent)
+            .Select(value => (long?)value.Version)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (item.ErrorCode == PublicationOrdering.SupersededErrorCode ||
+            PublicationOrdering.IsSuperseded(
+                item.DraftVersion, restaurantDraftVersion, currentPublicationVersion))
+        {
+            if (item.Status != PublicationStatuses.Succeeded)
+            {
+                var supersededAt = timeProvider.GetUtcNow();
+                item.Status = PublicationStatuses.Failed;
+                item.ErrorCode = PublicationOrdering.SupersededErrorCode;
+                item.CompletedAt = supersededAt;
+                item.UpdatedAt = supersededAt;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return ManagementResult<PublicationStatusResponse>.Failed(PublicationRetrySuperseded());
         }
         if (item.Status == PublicationStatuses.Failed)
         {
             item.Status = PublicationStatuses.Pending;
             item.ErrorCode = null;
+            item.CompletedAt = null;
             item.UpdatedAt = timeProvider.GetUtcNow();
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+        await transaction.CommitAsync(cancellationToken);
         await dispatcher.DispatchAsync(operationId, cancellationToken);
         dbContext.ChangeTracker.Clear();
         item = await dbContext.PublicationOutbox.AsNoTracking().SingleAsync(value => value.OperationId == operationId, cancellationToken);
+        if (item.ErrorCode == PublicationOrdering.SupersededErrorCode)
+        {
+            return ManagementResult<PublicationStatusResponse>.Failed(PublicationRetrySuperseded());
+        }
         return ManagementResult<PublicationStatusResponse>.Success(ToPublicationStatus(item));
     }
 
@@ -395,6 +473,14 @@ public sealed class RestaurantManagementService(
             .Where(item => item.RestaurantId == restaurant.Id)
             .OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.OperationId)
             .FirstOrDefaultAsync(cancellationToken);
+        var publishedDesignId = await ReadPublishedDesignIdAsync(restaurant.Id, cancellationToken);
+        var draftDesignId = WebsiteDesignCatalog.ResolvePublished(restaurant.Settings.WebsiteDesignId);
+        if (!string.Equals(draftDesignId, restaurant.Settings.WebsiteDesignId, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Restaurant {RestaurantId} has an unsupported draft website design; the legacy renderer was selected for management display.",
+                restaurant.Id);
+        }
         return new AdminRestaurantResponse(
             restaurant.Id.ToString(), restaurant.Name, restaurant.Description, restaurant.PhoneE164,
             restaurant.PhoneDisplay, restaurant.Email, restaurant.Settings.TimeZoneId,
@@ -413,8 +499,34 @@ public sealed class RestaurantManagementService(
                 restaurant.MainMediaAsset.Id.ToString(), restaurant.MainMediaAsset.AltText, restaurant.MainMediaAsset.ProcessingStatus,
                 restaurant.MainMediaAsset.Variants.OrderBy(item => item.Width).ThenBy(item => item.Height)
                     .Select(item => new PublicMediaVariant(item.Url, item.Width, item.Height)).ToArray()),
+            draftDesignId,
+            publishedDesignId,
+            WebsiteDesignCatalog.All.Select(design => new AdminWebsiteDesignResponse(
+                design.Id, design.Name, design.ContractVersion, design.Availability)).ToArray(),
             restaurant.DraftVersion.ToString(CultureInfo.InvariantCulture), DraftETag.Create(restaurant.Id, restaurant.DraftVersion),
             latest is null ? null : ToPublicationStatus(latest));
+    }
+
+    private async Task<string> ReadPublishedDesignIdAsync(Guid restaurantId, CancellationToken cancellationToken)
+    {
+        var snapshot = await dbContext.Publications.AsNoTracking()
+            .Where(item => item.RestaurantId == restaurantId && item.IsCurrent)
+            .Select(item => item.SnapshotJson)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (snapshot is null)
+        {
+            return WebsiteDesignIds.LegacyCurrent;
+        }
+
+        var storedDesignId = serializer.Deserialize(snapshot).WebsiteDesignId;
+        var resolvedDesignId = WebsiteDesignCatalog.ResolvePublished(storedDesignId);
+        if (!string.Equals(storedDesignId, resolvedDesignId, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "The current publication for restaurant {RestaurantId} has a missing or unsupported website design; the legacy renderer was selected.",
+                restaurantId);
+        }
+        return resolvedDesignId;
     }
 
     private static void ApplyAddress(RestaurantAddressEntity target, AdminAddressRequest source)
@@ -463,7 +575,39 @@ public sealed class RestaurantManagementService(
     private static PublicationStatusResponse ToPublicationStatus(PublicationOutboxEntity item) => new(
         item.OperationId.ToString(), item.Status, item.DraftVersion.ToString(CultureInfo.InvariantCulture),
         item.AttemptCount, item.ErrorCode, item.UpdatedAt);
+    private static ManagementFailure WebsiteDesignUnavailable() => new(
+        400,
+        "website_design_unavailable",
+        "The selected website design is not available",
+        Errors: new Dictionary<string, string[]> { ["designId"] = ["website_design_unavailable"] });
+    private static ManagementFailure PublicationRetrySuperseded() => new(
+        409,
+        "publication_retry_superseded",
+        "This publication was superseded by newer restaurant changes; reload before retrying");
     private static ManagementFailure NotFound() => new(404, "admin_resource_not_found", "Resource not found");
+}
+
+public static class PublicationOrdering
+{
+    public const string SupersededErrorCode = "publication_superseded";
+
+    public static bool IsSuperseded(
+        long operationDraftVersion,
+        long restaurantDraftVersion,
+        long? currentPublicationVersion) =>
+        restaurantDraftVersion > operationDraftVersion ||
+        currentPublicationVersion > operationDraftVersion;
+
+    internal static async Task<long> LockRestaurantDraftVersionAsync(
+        MenuDbContext dbContext,
+        Guid restaurantId,
+        CancellationToken cancellationToken)
+    {
+        var versions = await dbContext.Database.SqlQuery<long>(
+                $"SELECT draft_version AS \"Value\" FROM restaurants WHERE id = {restaurantId} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return versions.Single();
+    }
 }
 
 public interface IPublicationFailurePolicy
@@ -517,6 +661,17 @@ public sealed class InProcessPublicationDispatcher(
 
         try
         {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var restaurantId = await dbContext.PublicationOutbox.AsNoTracking()
+                .Where(item => item.OperationId == operationId)
+                .Select(item => (Guid?)item.RestaurantId)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (restaurantId is null)
+            {
+                return;
+            }
+            var restaurantDraftVersion = await PublicationOrdering.LockRestaurantDraftVersionAsync(
+                dbContext, restaurantId.Value, cancellationToken);
             dbContext.ChangeTracker.Clear();
             var outbox = await dbContext.PublicationOutbox.SingleOrDefaultAsync(
                 item => item.OperationId == operationId, cancellationToken);
@@ -524,16 +679,31 @@ public sealed class InProcessPublicationDispatcher(
             {
                 return;
             }
-
-            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var currentPublicationVersion = await dbContext.Publications.AsNoTracking()
+                .Where(item => item.RestaurantId == outbox.RestaurantId && item.IsCurrent)
+                .Select(item => (long?)item.Version)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (PublicationOrdering.IsSuperseded(
+                    outbox.DraftVersion, restaurantDraftVersion, currentPublicationVersion))
+            {
+                var supersededAt = timeProvider.GetUtcNow();
+                outbox.Status = PublicationStatuses.Failed;
+                outbox.ErrorCode = PublicationOrdering.SupersededErrorCode;
+                outbox.CompletedAt = supersededAt;
+                outbox.UpdatedAt = supersededAt;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                logger.LogInformation(
+                    "Publication operation {OperationId} was ignored because draft version {DraftVersion} was superseded.",
+                    operationId, outbox.DraftVersion);
+                return;
+            }
             if (failurePolicy.ShouldFail(operationId))
             {
                 throw new InvalidOperationException("Injected publication failure.");
             }
 
-            var oldVersion = await dbContext.Publications.AsNoTracking()
-                .Where(item => item.RestaurantId == outbox.RestaurantId && item.IsCurrent)
-                .Select(item => (long?)item.Version).SingleOrDefaultAsync(cancellationToken);
+            var oldVersion = currentPublicationVersion;
             await dbContext.Publications
                 .Where(item => item.RestaurantId == outbox.RestaurantId && item.IsCurrent)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsCurrent, false), cancellationToken);

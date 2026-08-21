@@ -10,11 +10,12 @@
 
 ## 1. Purpose
 
-This package converts Phase 3 product requirements into technical specifications for owner authentication, restaurant-information management, automatic publication, and consistent phone interaction.
+This package converts Phase 3 product requirements into technical specifications for owner authentication, restaurant-information management, predefined website design selection, automatic publication, and consistent phone interaction.
 
 - `pr-8-authentication.md`
 - `pr-9-restaurant-information-management.md`
 - `pr-10-phone-interaction.md`
+- `website-design-selection-implementation.md`
 - `backend-operations.md`
 - `backend-implementation-evidence.md`
 
@@ -27,6 +28,7 @@ This package converts Phase 3 product requirements into technical specifications
 5. PR-9's source file is incomplete after Task 2. Tasks 3–14 in its specification are a clearly labelled proposed reconstruction from the PRD and architecture and require product approval.
 6. PR-10 consolidates the PhoneLink/CallButton foundation introduced in PR-1 and applies it to existing surfaces only.
 7. Search Results, Favorites, and Restaurant Cards are not in the current product scope and are not built by PR-10.
+8. Website design selection extends PR-9 restaurant management with predefined, versioned public designs, owner preview, and controlled publication. It does not introduce free-form website editing.
 
 ## 3. Delivery order
 
@@ -84,6 +86,7 @@ The 60-second target is an engineering proposal pending product approval of the 
 | PR-8 Authentication | 10 | `pr-8-authentication.md` |
 | PR-9 Restaurant Information Management | 2 authoritative + 12 proposed | `pr-9-restaurant-information-management.md` |
 | PR-10 Phone Interaction | 8 | `pr-10-phone-interaction.md` |
+| PR-9 extension: Website Design Selection | 1 | `website-design-selection-implementation.md` |
 
 ## 8. References
 

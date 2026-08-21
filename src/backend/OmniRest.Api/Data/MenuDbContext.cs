@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using OmniRest.Api.Menus;
+using OmniRest.Api.Restaurants;
 
 namespace OmniRest.Api.Data;
 
@@ -70,6 +71,8 @@ public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> option
         entity.Property(x => x.Locale).HasColumnName("locale").HasMaxLength(35).IsRequired();
         entity.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3).IsFixedLength().IsRequired();
         entity.Property(x => x.TimeZoneId).HasColumnName("time_zone_id").HasMaxLength(100).HasDefaultValue("America/Winnipeg").IsRequired();
+        entity.Property(x => x.WebsiteDesignId).HasColumnName("website_design_id").HasMaxLength(80)
+            .HasDefaultValue(WebsiteDesignIds.LegacyCurrent).IsRequired();
         entity.Property(x => x.TaxDisplayMode).HasColumnName("tax_display_mode").HasMaxLength(10).IsRequired();
         entity.Property(x => x.TaxNoticeKey).HasColumnName("tax_notice_key").HasMaxLength(100);
         entity.Property(x => x.ConcurrencyVersion).HasColumnName("concurrency_version").HasDefaultValue(1L).IsConcurrencyToken();
@@ -282,6 +285,7 @@ public sealed class RestaurantSettingsEntity
     public string Locale { get; set; } = null!;
     public string Currency { get; set; } = null!;
     public string TimeZoneId { get; set; } = "America/Winnipeg";
+    public string WebsiteDesignId { get; set; } = WebsiteDesignIds.LegacyCurrent;
     public string TaxDisplayMode { get; set; } = null!;
     public string? TaxNoticeKey { get; set; }
     public long ConcurrencyVersion { get; set; } = 1;

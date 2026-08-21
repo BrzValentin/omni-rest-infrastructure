@@ -20,7 +20,11 @@ public sealed class PublicMenuProjectionBuilder(
 {
     private readonly IReadOnlySet<string> allowedMediaHosts = options.Value.AllowedMediaHosts;
 
-    public PublicMenuResponse Build(RestaurantEntity restaurant, MenuEntity? menu, long version)
+    public PublicMenuResponse Build(
+        RestaurantEntity restaurant,
+        MenuEntity? menu,
+        long version,
+        string? websiteDesignId = null)
     {
         ArgumentNullException.ThrowIfNull(restaurant.Settings);
         if (restaurant.Settings.TaxDisplayMode is not ("inclusive" or "exclusive"))
@@ -29,6 +33,8 @@ public sealed class PublicMenuProjectionBuilder(
         }
 
         var publicMenu = menu is null ? null : BuildMenu(restaurant.Id, menu);
+        var resolvedDesignId = WebsiteDesignCatalog.ResolvePublished(
+            websiteDesignId ?? restaurant.Settings.WebsiteDesignId);
         return new PublicMenuResponse(
             restaurant.Id.ToString("D", CultureInfo.InvariantCulture),
             restaurant.Name,
@@ -38,7 +44,8 @@ public sealed class PublicMenuProjectionBuilder(
             restaurant.Settings.TaxNoticeKey,
             version.ToString(CultureInfo.InvariantCulture),
             publicMenu,
-            restaurantBuilder.Build(restaurant, version));
+            restaurantBuilder.Build(restaurant, version, resolvedDesignId),
+            resolvedDesignId);
     }
 
     private PublicMenu BuildMenu(Guid restaurantId, MenuEntity menu)

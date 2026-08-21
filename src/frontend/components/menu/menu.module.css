@@ -34,6 +34,30 @@
   font-size: clamp(1.1rem, 3vw, 1.4rem);
 }
 
+.menuActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.menuAction {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding-inline: 1rem;
+  border: 1px solid var(--colour-line-strong);
+  border-radius: 999px;
+  color: var(--colour-ink);
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.menuAction:hover {
+  border-color: var(--colour-accent-strong);
+  background: var(--colour-surface-muted);
+}
+
 .taxNotice,
 .disclaimer {
   max-width: 48rem;

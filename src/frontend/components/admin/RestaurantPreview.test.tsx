@@ -15,7 +15,8 @@ const fixture: PublicRestaurant = {
   specialHours: [{ date: "2026-12-25", isClosed: true, note: "Holiday", intervals: [] }],
   status: { state: "open", label: "Open", nextChangeAt: null, source: "regularHours" },
   socialLinks: [{ platform: "instagram", url: "https://instagram.com/example" }],
-  mainImage: { altText: "Dining room", variants: [{ url: "https://images.example.test/main.webp", width: 800, height: 600 }] }, publicationVersion: "3",
+  mainImage: { altText: "Dining room", variants: [{ url: "https://images.example.test/main.webp", width: 800, height: 600 }] },
+  publicationVersion: "3", websiteDesignId: "legacy-current-v1",
 };
 
 describe("RestaurantPreview", () => {

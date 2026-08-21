@@ -1,0 +1,65 @@
+.nightfall-v1__shell { min-height: 100vh; background: #0e0f0d; color: #f2efe6; font-family: Georgia, "Times New Roman", serif; }
+.nightfall-v1__skipLink { position: fixed; z-index: 50; top: .5rem; left: .5rem; padding: .75rem 1rem; background: #f2efe6; color: #0e0f0d; transform: translateY(-150%); }
+.nightfall-v1__skipLink:focus { transform: translateY(0); }
+.nightfall-v1__header { position: relative; z-index: 2; display: flex; width: min(100% - 2rem, 88rem); min-height: 5rem; margin-inline: auto; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #514828; }
+.nightfall-v1__brand { color: inherit; font-size: clamp(1.15rem, 3vw, 1.7rem); font-style: italic; text-decoration: none; overflow-wrap: anywhere; }
+.nightfall-v1__navLink { display: grid; min-width: 3rem; min-height: 2.75rem; place-items: center; padding-inline: 1rem; border: 1px solid #c9a227; color: #f2efe6; font: 700 .78rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .16em; text-decoration: none; text-transform: uppercase; }
+.nightfall-v1__homeMain, .nightfall-v1__menuMain { width: min(100% - 2rem, 88rem); margin-inline: auto; }
+.nightfall-v1__hero { position: relative; display: grid; min-height: calc(100vh - 5rem); place-items: end start; overflow: hidden; border-bottom: 1px solid #514828; }
+.nightfall-v1__hero::after { position: absolute; inset: 0; background: linear-gradient(90deg, rgb(14 15 13 / 94%), rgb(14 15 13 / 62%) 54%, rgb(14 15 13 / 25%)); content: ""; }
+.nightfall-v1__heroImage { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(.55) brightness(.62); }
+.nightfall-v1__heroCopy { position: relative; z-index: 1; width: min(48rem, 100%); padding: clamp(4rem, 10vw, 10rem) clamp(1rem, 7vw, 7rem); }
+.nightfall-v1__eyebrow { margin: 0 0 1.5rem; color: #c9a227; font: 800 .72rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .28em; text-transform: uppercase; }
+.nightfall-v1__hero h1, .nightfall-v1__menuHero h1 { margin: 0; font-size: clamp(4rem, 12vw, 10rem); font-weight: 400; letter-spacing: -.055em; line-height: .78; overflow-wrap: anywhere; }
+.nightfall-v1__intro { max-width: 34rem; margin: 2rem 0 0; color: #d4d0c6; font: 1.08rem/1.7 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__status { color: #c9a227; font: 800 .8rem/1.4 ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; }
+.nightfall-v1__actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; font: 800 .82rem/1 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__primaryAction, .nightfall-v1__secondaryAction { display: inline-flex; min-height: 2.75rem; align-items: center; padding: .8rem 1.2rem; border: 1px solid #c9a227; color: inherit; text-decoration: none; }
+.nightfall-v1__primaryAction { background: #c9a227; color: #0e0f0d; }
+.nightfall-v1__detailsGrid { display: grid; grid-template-columns: 1.2fr .8fr; gap: clamp(3rem, 10vw, 10rem); padding-block: clamp(4rem, 9vw, 9rem); }
+.nightfall-v1__hoursSection h2, .nightfall-v1__detailSection h2, .nightfall-v1__specialSection h2 { margin: 0 0 1.5rem; color: #c9a227; font: 800 .72rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .2em; text-transform: uppercase; }
+.nightfall-v1__hoursSection dl { margin: 0; }
+.nightfall-v1__hoursSection dl > div { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid #35352f; }
+.nightfall-v1__hoursSection dd { margin: 0; text-align: right; }
+.nightfall-v1__detailSection address { margin-bottom: 1.5rem; font-size: clamp(1.8rem, 4vw, 3.6rem); font-style: normal; line-height: 1.05; }
+.nightfall-v1__textLink, .nightfall-v1__socialLinks a { color: #c9a227; }
+.nightfall-v1__specialSection { margin-bottom: 3rem; padding: 1.5rem; border-left: .25rem solid #c9a227; background: #171816; }
+.nightfall-v1__socialLinks { display: flex; flex-wrap: wrap; gap: 1.5rem; padding-block: 2rem 4rem; }
+.nightfall-v1__footer { width: min(100% - 2rem, 88rem); margin-inline: auto; padding-block: 2rem; border-top: 1px solid #514828; color: #918b7d; font: .78rem/1.4 ui-sans-serif, system-ui, sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.nightfall-v1__footer p { margin: 0; }
+.nightfall-v1__menuMain { padding-block: clamp(3rem, 8vw, 8rem); }
+.nightfall-v1__menuHero { min-height: 25rem; display: grid; align-content: end; padding: clamp(2rem, 7vw, 7rem); border: 1px solid #514828; background: radial-gradient(circle at 85% 20%, #4a3d16 0, transparent 38%), #131411; }
+.nightfall-v1__menuHero > p:last-child { color: #c9a227; font-size: 1.3rem; font-style: italic; }
+.nightfall-v1__notice, .nightfall-v1__stateCard, .nightfall-v1__disclaimer { max-width: 66rem; margin: 2rem auto; padding: 1rem; border: 1px solid #514828; background: #171816; font-family: ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__browser { min-width: 0; }
+.nightfall-v1__categoryNav { position: sticky; z-index: 5; top: 0; border-bottom: 1px solid #514828; background: rgb(14 15 13 / 96%); }
+.nightfall-v1__categoryStrip { display: flex; gap: 1rem; overflow-x: auto; padding: 1rem 0; }
+.nightfall-v1__categoryLink { display: inline-flex; min-width: max-content; min-height: 2.75rem; align-items: center; padding: .7rem 1rem; color: #aaa497; font: 800 .75rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .14em; text-decoration: none; text-transform: uppercase; }
+.nightfall-v1__categoryLink[data-selected="true"] { color: #0e0f0d; background: #c9a227; }
+.nightfall-v1__panels { padding-top: 4rem; }
+.nightfall-v1__panel[hidden] { display: none; }
+.nightfall-v1__categoryHeading { margin-bottom: 2.5rem; }
+.nightfall-v1__categoryHeading h2 { margin: 0; color: #c9a227; font-size: clamp(3rem, 8vw, 6.5rem); font-weight: 400; line-height: .9; }
+.nightfall-v1__categoryHeading p { max-width: 42rem; color: #aaa497; font: 1rem/1.6 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__emptyCategory { padding: 2rem; border: 1px dashed #69614a; }
+.nightfall-v1__dishGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: #514828; }
+.nightfall-v1__dishCard { display: flex; min-width: 0; flex-direction: column; background: #11120f; }
+.nightfall-v1__unavailableCard { opacity: .62; }
+.nightfall-v1__mediaFrame, .nightfall-v1__mediaPlaceholder { min-height: 15rem; background: #24241e; overflow: hidden; }
+.nightfall-v1__mediaFrame img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.6) contrast(1.05); }
+.nightfall-v1__mediaPlaceholder { display: grid; place-items: center; color: #c9a227; font-size: 2.4rem; }
+.nightfall-v1__dishBody { min-width: 0; padding: 1.5rem; }
+.nightfall-v1__dishHeading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.nightfall-v1__dishHeading h3, .nightfall-v1__price { margin: 0; }
+.nightfall-v1__dishHeading h3 { font-size: 1.45rem; font-weight: 400; overflow-wrap: anywhere; }
+.nightfall-v1__price { color: #c9a227; font: 800 .9rem/1.4 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__description { color: #aaa497; font: .92rem/1.6 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__unavailable { color: #f0a697; font: 800 .7rem/1.4 ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; }
+.nightfall-v1__badges { display: flex; flex-wrap: wrap; gap: .4rem; padding: 0; list-style: none; }
+.nightfall-v1__badge { padding: .3rem .45rem; border: 1px solid #6e6447; color: #d3c89f; font: 700 .68rem/1.2 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__allergenBadge { border-color: #a75a4b; color: #f0a697; }
+.nightfall-v1__disclaimer { color: #aaa497; font-size: .82rem; }
+.nightfall-v1__shell :focus-visible { outline: .2rem solid #e5bd37; outline-offset: .2rem; }
+@media (max-width: 68rem) { .nightfall-v1__dishGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 48rem) { .nightfall-v1__hero::after { background: linear-gradient(0deg, rgb(14 15 13 / 96%), rgb(14 15 13 / 25%)); } .nightfall-v1__detailsGrid, .nightfall-v1__dishGrid { grid-template-columns: 1fr; } .nightfall-v1__menuHero { min-height: 20rem; } .nightfall-v1__hero h1, .nightfall-v1__menuHero h1 { font-size: clamp(3.3rem, 18vw, 6rem); } }
+@media (forced-colors: active) { .nightfall-v1__primaryAction, .nightfall-v1__categoryLink[data-selected="true"] { border: 2px solid ButtonText; } }

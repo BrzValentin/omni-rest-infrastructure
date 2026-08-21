@@ -4,7 +4,10 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { headers } from "next/headers";
 import type { Session } from "./auth-contract";
+import type { PublicMenuResponse } from "./menu-contract";
 import type { AdminMediaAsset, AdminRestaurant, PublicRestaurant } from "./restaurant-contract";
+
+export type WebsiteDesignPreview = PublicMenuResponse & { restaurant: PublicRestaurant | null };
 
 async function serverGet<T>(path: string): Promise<{ status: number; data: T | null }> {
   const incoming = await headers();
@@ -33,5 +36,7 @@ async function serverGet<T>(path: string): Promise<{ status: number; data: T | n
 export const getSession = () => serverGet<Session>("/api/v1/auth/session");
 export const getAdminRestaurant = () => serverGet<AdminRestaurant>("/api/v1/admin/restaurant");
 export const getAdminPreview = () => serverGet<PublicRestaurant>("/api/v1/admin/restaurant/preview");
+export const getAdminWebsiteDesignPreview = (designId: string) =>
+  serverGet<WebsiteDesignPreview>(`/api/v1/admin/website-designs/${encodeURIComponent(designId)}/preview`);
 export const getAdminMediaAssets = () => serverGet<AdminMediaAsset[]>("/api/v1/admin/media-assets");
 export const getPublicRestaurant = () => serverGet<PublicRestaurant>("/api/v1/public/restaurant");

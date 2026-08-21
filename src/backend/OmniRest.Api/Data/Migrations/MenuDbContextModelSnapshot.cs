@@ -1123,6 +1123,14 @@ namespace OmniRest.Api.Data.Migrations
                         .HasDefaultValue("America/Winnipeg")
                         .HasColumnName("time_zone_id");
 
+                    b.Property<string>("WebsiteDesignId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasDefaultValue("legacy-current-v1")
+                        .HasColumnName("website_design_id");
+
                     b.HasKey("RestaurantId");
 
                     b.ToTable("restaurant_settings", "public", t =>

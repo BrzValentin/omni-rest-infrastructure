@@ -236,6 +236,238 @@ public sealed class AdminRestaurantApiTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task OwnerCanPreviewAndPublishOnlyAvailableWebsiteDesigns()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        await CreateOwnerAsync(factory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+
+        var initial = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(initial);
+        Assert.Equal(WebsiteDesignIds.LegacyCurrent, initial.DraftDesignId);
+        Assert.Equal(WebsiteDesignIds.LegacyCurrent, initial.PublishedDesignId);
+        Assert.Equal(4, initial.WebsiteDesigns.Count(design => design.Availability == WebsiteDesignAvailability.Available));
+        Assert.Contains(initial.WebsiteDesigns, design =>
+            design.Id == WebsiteDesignIds.LegacyCurrent &&
+            design.Availability == WebsiteDesignAvailability.Grandfathered);
+
+        using var preview = await client.GetAsync(
+            $"/api/v1/admin/website-designs/{WebsiteDesignIds.QuietElegance}/preview");
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        Assert.True(preview.Headers.CacheControl?.NoStore);
+        Assert.Contains("noindex", preview.Headers.GetValues("X-Robots-Tag").Single(), StringComparison.Ordinal);
+        var previewSite = await preview.Content.ReadFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>();
+        Assert.Equal(WebsiteDesignIds.QuietElegance, previewSite?.WebsiteDesignId);
+        Assert.Equal("Prairie Table", previewSite?.Restaurant?.Name);
+        Assert.NotNull(previewSite?.Menu);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            Assert.Empty(await db.PublicationOutbox.ToArrayAsync());
+            Assert.Equal(WebsiteDesignIds.LegacyCurrent,
+                await db.RestaurantSettings.Where(settings => settings.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId)
+                    .Select(settings => settings.WebsiteDesignId).SingleAsync());
+        }
+
+        var token = await GetAntiforgeryAsync(client);
+        using var rejectedCsrf = await PutWithHeadersAsync(
+            client,
+            "/api/v1/admin/restaurant/design",
+            new UpdateWebsiteDesignRequest(WebsiteDesignIds.QuietElegance),
+            "invalid-token",
+            initial.ETag);
+        Assert.Equal(HttpStatusCode.BadRequest, rejectedCsrf.StatusCode);
+
+        using var rejectedDesign = await PutWithHeadersAsync(
+            client,
+            "/api/v1/admin/restaurant/design",
+            new UpdateWebsiteDesignRequest(WebsiteDesignIds.LegacyCurrent),
+            token,
+            initial.ETag);
+        Assert.Equal(HttpStatusCode.BadRequest, rejectedDesign.StatusCode);
+        Assert.Contains("website_design_unavailable", await rejectedDesign.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        var mutation = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/design",
+            new UpdateWebsiteDesignRequest(WebsiteDesignIds.QuietElegance),
+            token,
+            initial.ETag);
+        Assert.Equal(PublicationStatuses.Succeeded, mutation.Publication.Status);
+        Assert.Equal(WebsiteDesignIds.QuietElegance, mutation.Restaurant.DraftDesignId);
+        Assert.Equal(WebsiteDesignIds.QuietElegance, mutation.Restaurant.PublishedDesignId);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var published = await client.GetFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>("/api/v1/public/menu");
+        Assert.Equal(WebsiteDesignIds.QuietElegance, published?.WebsiteDesignId);
+        Assert.Equal(WebsiteDesignIds.QuietElegance, published?.Restaurant?.WebsiteDesignId);
+    }
+
+    [Fact]
+    public async Task FailedWebsiteDesignPublicationKeepsPublishedDesignDistinctUntilSafeRetry()
+    {
+        var failure = new ToggleFailurePolicy { Fail = true };
+        using var baseFactory = postgres.CreateFactory();
+        using var factory = baseFactory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IPublicationFailurePolicy>();
+            services.AddSingleton<IPublicationFailurePolicy>(failure);
+        }));
+        await postgres.RecreateLatestAndSeedAsync((MenuApiFactory)baseFactory);
+        await CreateOwnerAsync(baseFactory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+
+        var mutation = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/design",
+            new UpdateWebsiteDesignRequest(WebsiteDesignIds.Nightfall),
+            await GetAntiforgeryAsync(client),
+            current!.ETag);
+        Assert.Equal(PublicationStatuses.Failed, mutation.Publication.Status);
+        Assert.Equal(WebsiteDesignIds.Nightfall, mutation.Restaurant.DraftDesignId);
+        Assert.Equal(WebsiteDesignIds.LegacyCurrent, mutation.Restaurant.PublishedDesignId);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var unchanged = await client.GetFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>("/api/v1/public/menu");
+        Assert.Equal(WebsiteDesignIds.LegacyCurrent, unchanged?.WebsiteDesignId);
+
+        failure.Fail = false;
+        client.DefaultRequestHeaders.Host = "localhost";
+        using var retry = await SendWithHeadersAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/v1/admin/publication-status/{mutation.Publication.OperationId}/retry",
+            new { },
+            await GetAntiforgeryAsync(client),
+            null);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        Assert.Equal(PublicationStatuses.Succeeded,
+            (await retry.Content.ReadFromJsonAsync<PublicationStatusResponse>())?.Status);
+
+        var afterRetry = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.Equal(WebsiteDesignIds.Nightfall, afterRetry?.DraftDesignId);
+        Assert.Equal(WebsiteDesignIds.Nightfall, afterRetry?.PublishedDesignId);
+    }
+
+    [Fact]
+    public async Task SupersededWebsiteDesignRetryCannotRollbackNewerPublication()
+    {
+        var failure = new ToggleFailurePolicy { Fail = true };
+        using var baseFactory = postgres.CreateFactory();
+        using var factory = baseFactory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IPublicationFailurePolicy>();
+            services.AddSingleton<IPublicationFailurePolicy>(failure);
+        }));
+        await postgres.RecreateLatestAndSeedAsync((MenuApiFactory)baseFactory);
+        await CreateOwnerAsync(baseFactory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+
+        var first = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/design",
+            new UpdateWebsiteDesignRequest(WebsiteDesignIds.Nightfall),
+            await GetAntiforgeryAsync(client),
+            current!.ETag);
+        Assert.Equal(PublicationStatuses.Failed, first.Publication.Status);
+
+        failure.Fail = false;
+        var second = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/design",
+            new UpdateWebsiteDesignRequest(WebsiteDesignIds.Broadsheet),
+            await GetAntiforgeryAsync(client),
+            first.Restaurant.ETag);
+        Assert.Equal(PublicationStatuses.Succeeded, second.Publication.Status);
+        Assert.True(long.Parse(second.Publication.DraftVersion) > long.Parse(first.Publication.DraftVersion));
+
+        using var staleRetry = await SendWithHeadersAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/v1/admin/publication-status/{first.Publication.OperationId}/retry",
+            new { },
+            await GetAntiforgeryAsync(client),
+            null);
+        Assert.Equal(HttpStatusCode.Conflict, staleRetry.StatusCode);
+        Assert.Contains(
+            "publication_retry_superseded",
+            await staleRetry.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+
+        var firstOperationId = Guid.Parse(first.Publication.OperationId);
+        var secondOperationId = Guid.Parse(second.Publication.OperationId);
+        await using (var verifyScope = factory.Services.CreateAsyncScope())
+        {
+            var verify = verifyScope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            var stale = await verify.PublicationOutbox.AsNoTracking()
+                .SingleAsync(item => item.OperationId == firstOperationId);
+            Assert.Equal(PublicationStatuses.Failed, stale.Status);
+            Assert.Equal(PublicationOrdering.SupersededErrorCode, stale.ErrorCode);
+            Assert.Equal(1, stale.AttemptCount);
+            Assert.DoesNotContain(
+                await verify.Publications.Where(item => item.RestaurantId == stale.RestaurantId).ToArrayAsync(),
+                item => item.OperationId == firstOperationId);
+            var currentPublication = await verify.Publications.AsNoTracking().SingleAsync(
+                item => item.RestaurantId == stale.RestaurantId && item.IsCurrent);
+            Assert.Equal(secondOperationId, currentPublication.OperationId);
+            Assert.Equal(long.Parse(second.Publication.DraftVersion), currentPublication.Version);
+        }
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var publicAfterRejectedRetry =
+            await client.GetFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>("/api/v1/public/menu");
+        Assert.Equal(WebsiteDesignIds.Broadsheet, publicAfterRejectedRetry?.WebsiteDesignId);
+        Assert.Equal(second.Publication.DraftVersion, publicAfterRejectedRetry?.PublicationVersion);
+
+        client.DefaultRequestHeaders.Host = "localhost";
+        await using (var setupScope = factory.Services.CreateAsyncScope())
+        {
+            var setup = setupScope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            var stale = await setup.PublicationOutbox.SingleAsync(
+                item => item.OperationId == firstOperationId);
+            stale.Status = PublicationStatuses.Pending;
+            stale.ErrorCode = null;
+            stale.CompletedAt = null;
+            stale.UpdatedAt = DateTimeOffset.UtcNow;
+            await setup.SaveChangesAsync();
+        }
+        await using (var dispatchScope = factory.Services.CreateAsyncScope())
+        {
+            var dispatcher = dispatchScope.ServiceProvider.GetRequiredService<IInProcessPublicationDispatcher>();
+            await dispatcher.DispatchAsync(firstOperationId, CancellationToken.None);
+        }
+        await using (var verifyScope = factory.Services.CreateAsyncScope())
+        {
+            var verify = verifyScope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            var stale = await verify.PublicationOutbox.AsNoTracking()
+                .SingleAsync(item => item.OperationId == firstOperationId);
+            Assert.Equal(PublicationStatuses.Failed, stale.Status);
+            Assert.Equal(PublicationOrdering.SupersededErrorCode, stale.ErrorCode);
+            Assert.True(stale.AttemptCount >= 2);
+            Assert.DoesNotContain(
+                await verify.Publications.Where(item => item.RestaurantId == stale.RestaurantId).ToArrayAsync(),
+                item => item.OperationId == firstOperationId);
+            Assert.Equal(
+                secondOperationId,
+                (await verify.Publications.AsNoTracking().SingleAsync(
+                    item => item.RestaurantId == stale.RestaurantId && item.IsCurrent)).OperationId);
+        }
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var publicAfterDefensiveDispatch =
+            await client.GetFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>("/api/v1/public/menu");
+        Assert.Equal(WebsiteDesignIds.Broadsheet, publicAfterDefensiveDispatch?.WebsiteDesignId);
+        Assert.Equal(second.Publication.DraftVersion, publicAfterDefensiveDispatch?.PublicationVersion);
+    }
+
+    [Fact]
     public async Task ReadyMediaUploadListingAltTextSelectionAndTenantIsolationUseValidatedBytes()
     {
         using var factory = postgres.CreateFactory();

@@ -1,4 +1,41 @@
 import type { PublicMenuResponse } from "@/lib/menu-contract";
+import { websiteDesignIds, type PublicRestaurant } from "@/lib/restaurant-contract";
+
+export const ordinaryRestaurant: PublicRestaurant = {
+  id: "11111111-1111-4111-8111-111111111111",
+  name: "Prairie Table",
+  shortDescription: "Seasonal dishes from local ingredients.",
+  phone: { e164: "+12045550123", display: "(204) 555-0123" },
+  email: "hello@example.test",
+  timeZone: "America/Winnipeg",
+  address: {
+    streetLine1: "1 Main Street",
+    streetLine2: null,
+    city: "Winnipeg",
+    region: "MB",
+    postalCode: "R3C 1A1",
+    countryCode: "CA",
+    formatted: "1 Main Street, Winnipeg, MB R3C 1A1",
+    directionsUrl: "https://maps.example.test/directions",
+  },
+  regularHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+    dayOfWeek,
+    intervals: dayOfWeek === 0 ? [] : [
+      { opensAt: "09:00:00", closesAt: "17:00:00", closesNextDay: false },
+    ],
+  })),
+  specialHours: [
+    { date: "2026-12-25", isClosed: true, note: "Holiday", intervals: [] },
+  ],
+  status: { state: "open", label: "Open now", nextChangeAt: null, source: "regularHours" },
+  socialLinks: [{ platform: "instagram", url: "https://instagram.com/example" }],
+  mainImage: {
+    altText: "Dining room",
+    variants: [{ url: "/media/restaurant.webp", width: 1200, height: 800 }],
+  },
+  publicationVersion: "1",
+  websiteDesignId: websiteDesignIds.legacyCurrent,
+};
 
 export const ordinaryMenu: PublicMenuResponse = {
   restaurantId: "11111111-1111-4111-8111-111111111111",
@@ -8,6 +45,8 @@ export const ordinaryMenu: PublicMenuResponse = {
   taxDisplayMode: "exclusive",
   taxNoticeKey: "menu.tax.exclusive",
   publicationVersion: "1",
+  websiteDesignId: websiteDesignIds.legacyCurrent,
+  restaurant: ordinaryRestaurant,
   menu: {
     id: "22222222-2222-4222-8222-222222222222",
     name: "All Day Menu",
