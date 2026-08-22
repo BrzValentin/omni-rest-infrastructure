@@ -22,11 +22,12 @@
 
     ON A NEW MACHINE
     Because Windows blocks .ps1 files by default, run start-app.cmd rather than
-    this file directly. Prerequisites in WSL (see RUN_LOCALLY_WINDOWS.md):
-    Docker Desktop with WSL integration, nvm + the Node version pinned in
-    .node-version, the .NET SDK pinned in global.json under ~/.dotnet, plus
-    `sudo apt install -y rsync iproute2 lsof curl libatomic1`. The script
-    creates the Linux-side copy itself and tells you what is missing.
+    this file directly. Prerequisites inside WSL: Docker Desktop with WSL
+    integration enabled, nvm plus the Node version pinned in .node-version, the
+    .NET SDK pinned in global.json installed under ~/.dotnet, and
+    `sudo apt install -y rsync iproute2 curl libatomic1` (without libatomic1
+    Node will not start at all). The script creates the Linux-side copy itself
+    and prints exactly what is missing.
 
     The app is built and run from a copy on the Linux filesystem
     ($HOME/projects/omni-rest-infrastructure by default, override with
@@ -196,13 +197,16 @@ for c in docker rsync ss node npm dotnet curl; do
   command -v "$c" >/dev/null 2>&1 || {
     echo "Missing required command in WSL: $c"
     echo ""
-    echo "This machine is not set up yet. See RUN_LOCALLY_WINDOWS.md in the repo:"
-    echo "  node/npm  -> nvm (the repo pins the version in .node-version)"
-    echo "  dotnet    -> ~/.dotnet (the repo pins the SDK in global.json)"
-    echo "  docker    -> Docker Desktop with WSL integration enabled"
-    echo "  rsync/ss  -> sudo apt install -y rsync iproute2"
-    echo ""
-    echo "Node also needs libatomic1:  sudo apt install -y libatomic1"
+    echo "This WSL distro is not set up yet. What it needs:"
+    echo "  docker    -> Docker Desktop for Windows, WSL integration enabled"
+    echo "               for this distro (Settings > Resources > WSL Integration)"
+    echo "  node/npm  -> nvm, then: nvm install \$(cat .node-version)"
+    echo "  dotnet    -> ~/.dotnet, version from global.json:"
+    echo "               curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s \\"
+    echo "                 -- --version <sdk> --install-dir \$HOME/.dotnet"
+    echo "               then export DOTNET_ROOT=\$HOME/.dotnet and add it to PATH"
+    echo "  packages  -> sudo apt install -y rsync iproute2 curl libatomic1"
+    echo "               (libatomic1 is required or Node will not start at all)"
     exit 1
   }
 done
