@@ -110,6 +110,7 @@ public sealed class AuditEventEntity
     public Guid ActorUserId { get; set; }
     public string Action { get; set; } = null!;
     public string EntityType { get; set; } = null!;
+    public Guid? EntityId { get; set; }
     public string EntityVersion { get; set; } = null!;
     public Guid? OperationId { get; set; }
     public DateTimeOffset OccurredAt { get; set; }
@@ -331,6 +332,7 @@ public sealed partial class MenuDbContext
         entity.Property(x => x.ActorUserId).HasColumnName("actor_user_id");
         entity.Property(x => x.Action).HasColumnName("action").HasMaxLength(80).IsRequired();
         entity.Property(x => x.EntityType).HasColumnName("entity_type").HasMaxLength(80).IsRequired();
+        entity.Property(x => x.EntityId).HasColumnName("entity_id");
         entity.Property(x => x.EntityVersion).HasColumnName("entity_version").HasMaxLength(80).IsRequired();
         entity.Property(x => x.OperationId).HasColumnName("operation_id");
         entity.Property(x => x.OccurredAt).HasColumnName("occurred_at");

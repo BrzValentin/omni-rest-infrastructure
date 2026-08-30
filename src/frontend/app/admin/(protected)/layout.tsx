@@ -22,6 +22,9 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
         <Link href="/admin">Owner Portal</Link>
         <nav aria-label="Owner navigation">
           <Link href="/admin/restaurant">Restaurant</Link>
+          <Link href="/admin/menu">Menu</Link>
+          <Link href="/admin/menu/dishes">Dishes</Link>
+          <Link href="/admin/gallery">Gallery</Link>
           <Link href="/admin/restaurant/preview">Preview</Link>
           <Link href="/admin/design">Design</Link>
           <LogoutButton />

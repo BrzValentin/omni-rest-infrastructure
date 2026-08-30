@@ -68,7 +68,12 @@ public sealed class PublicMenuReader(
                 WebsiteDesignId = resolvedDesignId,
                 Restaurant = response.Restaurant is null
                     ? null
-                    : response.Restaurant with { WebsiteDesignId = resolvedDesignId }
+                    : response.Restaurant with
+                    {
+                        WebsiteDesignId = resolvedDesignId,
+                        // Snapshots published before Phase 5 carry no gallery array at all.
+                        Gallery = response.Restaurant.Gallery is { } gallery ? gallery : []
+                    }
             };
 
             cache.Set(key, response, new MemoryCacheEntryOptions

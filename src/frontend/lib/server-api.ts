@@ -5,7 +5,14 @@ import { request as httpsRequest } from "node:https";
 import { headers } from "next/headers";
 import type { Session } from "./auth-contract";
 import type { PublicMenuResponse } from "./menu-contract";
-import type { AdminMediaAsset, AdminRestaurant, PublicRestaurant } from "./restaurant-contract";
+import type { AdminMenu } from "./menu-admin-contract";
+import type { AdminGallery } from "./gallery-admin-contract";
+import type {
+  AdminMediaAsset,
+  AdminRestaurant,
+  PublicGalleryResponse,
+  PublicRestaurant,
+} from "./restaurant-contract";
 
 export type WebsiteDesignPreview = PublicMenuResponse & { restaurant: PublicRestaurant | null };
 
@@ -39,4 +46,7 @@ export const getAdminPreview = () => serverGet<PublicRestaurant>("/api/v1/admin/
 export const getAdminWebsiteDesignPreview = (designId: string) =>
   serverGet<WebsiteDesignPreview>(`/api/v1/admin/website-designs/${encodeURIComponent(designId)}/preview`);
 export const getAdminMediaAssets = () => serverGet<AdminMediaAsset[]>("/api/v1/admin/media-assets");
+export const getAdminMenu = () => serverGet<AdminMenu>("/api/v1/admin/menu");
+export const getAdminGallery = () => serverGet<AdminGallery>("/api/v1/admin/gallery");
 export const getPublicRestaurant = () => serverGet<PublicRestaurant>("/api/v1/public/restaurant");
+export const getPublicGallery = () => serverGet<PublicGalleryResponse>("/api/v1/public/restaurant/gallery");

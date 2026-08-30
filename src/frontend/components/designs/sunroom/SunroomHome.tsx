@@ -1,4 +1,5 @@
 import type { WebsiteDesignHomeProps } from "../design-contract";
+import { DesignGallery } from "../shared/DesignGallery";
 import {
   DesignFooter,
   DesignSkipLink,
@@ -17,6 +18,7 @@ const styles = createDesignClassNames("sunroom-v1");
 
 export default function SunroomHome({ restaurant }: WebsiteDesignHomeProps) {
   const name = restaurant?.name ?? "Omni REST";
+  const gallery = restaurant?.gallery ?? [];
   return (
     <div className={styles.shell} data-website-design="sunroom-v1">
       <DesignSkipLink className={styles.skipLink} />
@@ -43,6 +45,9 @@ export default function SunroomHome({ restaurant }: WebsiteDesignHomeProps) {
               <RestaurantContact restaurant={restaurant} className={styles.detailSection} linkClassName={styles.textLink} headingId="sun-visit" />
             </div>
             <RestaurantSpecialHours restaurant={restaurant} className={styles.specialSection} headingId="sun-special" />
+            {gallery.length > 0 ? (
+              <DesignGallery photos={gallery} classes={styles} headingId="sun-gallery" restaurantName={name} />
+            ) : null}
             <RestaurantSocialLinks restaurant={restaurant} className={styles.socialLinks} />
           </>
         ) : null}

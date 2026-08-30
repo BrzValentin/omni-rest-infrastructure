@@ -260,5 +260,5 @@ public sealed class RestaurantStatusCalculatorTests
         IReadOnlyList<PublicRegularHours> regular,
         IReadOnlyList<PublicSpecialHours> special) => new(
         "id", "Test", null, null, null, "UTC", null, regular, special,
-        new PublicRestaurantStatus("closed", "Closed", null, "regularHours"), [], null, "1");
+        new PublicRestaurantStatus("closed", "Closed", null, "regularHours"), [], null, "1", []);
 }

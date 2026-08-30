@@ -134,3 +134,189 @@
   .legacy-current-v1__categoryLink[data-selected="true"] { border: 2px solid ButtonText; background: ButtonFace; color: ButtonText; forced-color-adjust: auto; }
   .legacy-current-v1__badge, .legacy-current-v1__allergenBadge, .legacy-current-v1__unavailable { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
 }
+
+.legacy-current-v1__gallerySection {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--colour-line);
+}
+
+.legacy-current-v1__galleryHeading {
+  margin: 0 0 1rem;
+  font-family: Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+.legacy-current-v1__galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legacy-current-v1__galleryItem {
+  min-width: 0;
+}
+
+.legacy-current-v1__galleryThumbButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--colour-line);
+  border-radius: 0.6rem;
+  background: var(--colour-surface-muted);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.legacy-current-v1__galleryThumbButton:disabled {
+  cursor: default;
+}
+
+.legacy-current-v1__galleryFrame {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+}
+
+.legacy-current-v1__galleryImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.2s ease;
+}
+
+.legacy-current-v1__gallerySkeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    var(--colour-surface-muted) 40%,
+    var(--colour-surface) 50%,
+    var(--colour-surface-muted) 60%
+  ) 0 0 / 300% 100%;
+  animation: legacy-current-v1__gallerySkeletonPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes legacy-current-v1__gallerySkeletonPulse {
+  from { background-position: 170% 0; }
+  to { background-position: -70% 0; }
+}
+
+.legacy-current-v1__galleryFallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--colour-surface-muted);
+  color: var(--colour-muted);
+  font-size: 1.8rem;
+}
+
+.legacy-current-v1__galleryEmpty {
+  margin: 0;
+  color: var(--colour-muted);
+  line-height: 1.6;
+}
+
+.legacy-current-v1__lightboxBackdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(33 29 24 / 72%);
+}
+
+.legacy-current-v1__lightbox {
+  display: grid;
+  width: min(100%, 52rem);
+  max-height: 100%;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--colour-line);
+  border-radius: 1rem;
+  background: var(--colour-surface);
+  color: var(--colour-ink);
+  overflow: auto;
+}
+
+.legacy-current-v1__lightboxFigure {
+  position: relative;
+  display: grid;
+  margin: 0;
+  gap: 0.75rem;
+}
+
+.legacy-current-v1__lightboxImage {
+  width: 100%;
+  height: auto;
+  max-height: 58vh;
+  border-radius: 0.6rem;
+  object-fit: contain;
+}
+
+.legacy-current-v1__lightboxCaption {
+  color: var(--colour-muted);
+  line-height: 1.6;
+}
+
+.legacy-current-v1__lightboxCounter {
+  margin: 0;
+  color: var(--colour-accent-strong);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.legacy-current-v1__lightboxNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.legacy-current-v1__lightboxNavButton,
+.legacy-current-v1__lightboxClose {
+  min-height: 2.75rem;
+  padding: 0.65rem 1.1rem;
+  border: 1px solid var(--colour-line-strong);
+  border-radius: 0.5rem;
+  background: var(--colour-surface);
+  color: var(--colour-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.legacy-current-v1__lightboxClose {
+  justify-self: end;
+  border-color: var(--colour-accent-strong);
+  background: var(--colour-accent-strong);
+  color: var(--colour-surface);
+}
+
+.legacy-current-v1__lightboxNavButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legacy-current-v1__galleryImage { transition: none; }
+  .legacy-current-v1__gallerySkeleton { background: var(--colour-surface-muted); animation: none; }
+}
+
+@media (max-width: 34rem) {
+  .legacy-current-v1__galleryGrid { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); }
+}
+
+@media (forced-colors: active) {
+  .legacy-current-v1__galleryThumbButton, .legacy-current-v1__lightboxClose { border: 2px solid ButtonText; }
+}

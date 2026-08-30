@@ -80,3 +80,29 @@
   .sunroom-v1__hoursSection dd { text-align: left; }
 }
 @media (forced-colors: active) { .sunroom-v1__primaryAction, .sunroom-v1__categoryLink[data-selected="true"] { border: 2px solid ButtonText; } }
+.sunroom-v1__gallerySection { padding-block: clamp(3rem, 7vw, 6.5rem); }
+.sunroom-v1__galleryHeading { margin: 0 0 1.5rem; color: #b0442c; font-size: 1.4rem; font-weight: 850; }
+.sunroom-v1__galleryGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 1.25rem; margin: 0; padding: 0; list-style: none; }
+.sunroom-v1__galleryItem { min-width: 0; }
+.sunroom-v1__galleryThumbButton { display: block; width: 100%; padding: 0; border: 0; border-radius: 1.25rem; background: #dce7e9; cursor: pointer; overflow: hidden; }
+.sunroom-v1__galleryThumbButton:disabled { cursor: default; }
+.sunroom-v1__galleryFrame { position: relative; display: block; aspect-ratio: 5 / 4; overflow: hidden; }
+.sunroom-v1__galleryImage { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .25s ease; }
+.sunroom-v1__galleryThumbButton:hover .sunroom-v1__galleryImage { transform: scale(1.04); }
+.sunroom-v1__gallerySkeleton { position: absolute; inset: 0; background: linear-gradient(75deg, #dce7e9 36%, #f1f8f9 50%, #dce7e9 64%) 0 0 / 260% 100%; animation: sunroom-v1__gallerySkeletonDrift 2.2s ease-in-out infinite; }
+@keyframes sunroom-v1__gallerySkeletonDrift { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.sunroom-v1__galleryFallback { position: absolute; inset: 0; display: grid; place-items: center; background: #dce7e9; color: #b0442c; font-size: 2rem; }
+.sunroom-v1__galleryEmpty { margin: 0; color: #55524b; font-size: 1.05rem; line-height: 1.6; }
+.sunroom-v1__lightboxBackdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(43 43 40 / 78%); }
+.sunroom-v1__lightbox { display: grid; width: min(100%, 60rem); max-height: 100%; gap: 1rem; padding: 1.5rem; border-radius: 1.75rem; background: #f2eee7; color: #2b2b28; overflow: auto; }
+.sunroom-v1__lightboxFigure { position: relative; display: grid; margin: 0; gap: .8rem; }
+.sunroom-v1__lightboxImage { width: 100%; height: auto; max-height: 60vh; border-radius: 1.25rem; object-fit: contain; }
+.sunroom-v1__lightboxCaption { color: #55524b; font-size: 1.05rem; line-height: 1.6; }
+.sunroom-v1__lightboxCounter { margin: 0; color: #b0442c; font-size: .85rem; font-weight: 800; }
+.sunroom-v1__lightboxNav { display: flex; flex-wrap: wrap; gap: .75rem; }
+.sunroom-v1__lightboxNavButton, .sunroom-v1__lightboxClose { min-height: 2.75rem; padding: .7rem 1.35rem; border: 0; border-radius: 999px; background: #dce7e9; color: #211611; font: inherit; font-weight: 800; cursor: pointer; }
+.sunroom-v1__lightboxClose { justify-self: end; background: #e8735a; }
+.sunroom-v1__lightboxNavButton:disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .sunroom-v1__galleryImage { transition: none; } .sunroom-v1__galleryThumbButton:hover .sunroom-v1__galleryImage { transform: none; } .sunroom-v1__gallerySkeleton { background: #dce7e9; animation: none; } }
+@media (max-width: 40rem) { .sunroom-v1__galleryGrid { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: .75rem; } }
+@media (forced-colors: active) { .sunroom-v1__galleryThumbButton, .sunroom-v1__lightboxNavButton { border: 2px solid ButtonText; } }

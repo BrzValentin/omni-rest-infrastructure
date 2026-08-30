@@ -134,7 +134,11 @@ public sealed class AdminRestaurantApiTests(PostgresFixture postgres)
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
-            ordinaryMedia = await db.MediaAssets.Where(item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId)
+            // Phase 5 seeds gallery photos as media assets of the same restaurant, so this must pick the one
+            // standalone asset the main-image workflow uses rather than every asset the tenant owns.
+            ordinaryMedia = await db.MediaAssets
+                .Where(item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId
+                    && !db.GalleryImages.Any(gallery => gallery.MediaAssetId == item.Id))
                 .Select(item => item.Id).SingleAsync();
             var alternate = await db.Restaurants.SingleAsync(item => item.Id == GuardedSampleDataSeeder.AlternateRestaurantId);
             var media = new MediaAssetEntity

@@ -29,6 +29,21 @@ public sealed record PublicSpecialHours(
 public sealed record PublicRestaurantStatus(string State, string Label, DateTimeOffset? NextChangeAt, string Source);
 public sealed record PublicSocialLink(string Platform, string Url);
 
+public sealed record PublicGalleryImage(
+    string Id,
+    string ImageUrl,
+    string ThumbnailUrl,
+    string AltText,
+    string? Caption,
+    int Width,
+    int Height,
+    int ThumbnailWidth,
+    int ThumbnailHeight);
+
+public sealed record PublicGalleryResponse(
+    string PublicationVersion,
+    IReadOnlyList<PublicGalleryImage> Images);
+
 public sealed record PublicRestaurantResponse(
     string Id,
     string Name,
@@ -43,6 +58,7 @@ public sealed record PublicRestaurantResponse(
     IReadOnlyList<PublicSocialLink> SocialLinks,
     PublicMedia? MainImage,
     string PublicationVersion,
+    IReadOnlyList<PublicGalleryImage> Gallery,
     string? WebsiteDesignId = null);
 
 public sealed class RestaurantPublicProjectionBuilder(
@@ -83,6 +99,14 @@ public sealed class RestaurantPublicProjectionBuilder(
                     .Select(item => new PublicMediaVariant(item.Url, item.Width, item.Height)).ToArray());
         }
 
+        var gallery = restaurant.GalleryImages
+            .Where(item => item.IsActive)
+            .OrderBy(item => item.DisplayOrder)
+            .ThenBy(item => item.Id)
+            .Select(item => BuildGalleryImage(restaurant.Id, item))
+            .OfType<PublicGalleryImage>()
+            .ToArray();
+
         var address = restaurant.Address is null ? null : ToPublicAddress(restaurant.Address);
         var response = new PublicRestaurantResponse(
             restaurant.Id.ToString(),
@@ -101,8 +125,51 @@ public sealed class RestaurantPublicProjectionBuilder(
                 .Select(item => new PublicSocialLink(item.Platform, item.Url)).ToArray(),
             mainImage,
             version.ToString(CultureInfo.InvariantCulture),
+            gallery,
             websiteDesignId);
         return response with { Status = statusCalculator.Calculate(response, timeProvider.GetUtcNow()) };
+    }
+
+    /// <summary>
+    /// Projects one active gallery row, or <c>null</c> when the asset is not publishable. An asset that is
+    /// not ready, or that has no variants, is skipped rather than published with a broken URL.
+    /// </summary>
+    private PublicGalleryImage? BuildGalleryImage(Guid restaurantId, GalleryImageEntity image)
+    {
+        if (image.RestaurantId != restaurantId || image.MediaAsset.RestaurantId != restaurantId ||
+            image.MediaAsset.Id != image.MediaAssetId)
+        {
+            throw new InvalidOperationException("Gallery ownership does not match the published restaurant.");
+        }
+
+        if (image.MediaAsset.ProcessingStatus != "ready" || image.MediaAsset.Variants.Count == 0)
+        {
+            return null;
+        }
+
+        var variants = image.MediaAsset.Variants
+            .OrderBy(item => item.Width).ThenBy(item => item.Height).ThenBy(item => item.Id)
+            .ToArray();
+        if (variants.Any(item => item.RestaurantId != restaurantId || item.MediaAssetId != image.MediaAssetId ||
+            item.Width <= 0 || item.Height <= 0 ||
+            !MenuValidation.IsSafeMediaUrl(item.Url, options.Value.AllowedMediaHosts)))
+        {
+            throw new InvalidOperationException("Gallery image variants are invalid for public projection.");
+        }
+
+        // Smallest width is the thumbnail, largest is the full-size image; a single variant serves both.
+        var thumbnail = variants[0];
+        var original = variants[^1];
+        return new PublicGalleryImage(
+            image.Id.ToString("D", CultureInfo.InvariantCulture),
+            original.Url,
+            thumbnail.Url,
+            image.MediaAsset.AltText,
+            image.Caption,
+            original.Width,
+            original.Height,
+            thumbnail.Width,
+            thumbnail.Height);
     }
 
     private static PublicHourInterval ToPublicInterval(RegularHourIntervalEntity item) => new(
