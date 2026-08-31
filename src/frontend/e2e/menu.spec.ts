@@ -85,7 +85,10 @@ test("renders tenant, empty, not-found, loading, and recoverable error states", 
   expect(missingResponse?.status()).toBe(404);
   await expect(page.getByRole("heading", { name: "Restaurant not found", level: 1 })).toBeVisible();
 
-  await page.goto("http://error.localhost:3000/menu");
+  // A transient upstream fault must surface as a server error, never as a 404 — a 404 tells a
+  // crawler the page is permanently gone (specifications/phase-6/page-indexing-classification.md).
+  const errorResponse = await page.goto("http://error.localhost:3000/menu");
+  expect(errorResponse?.status()).toBeGreaterThanOrEqual(500);
   await expect(page.getByRole("heading", { name: "We could not load the menu", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("heading", { name: "Prairie Table", level: 1 })).toBeVisible();

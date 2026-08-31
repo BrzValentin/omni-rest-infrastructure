@@ -1,4 +1,6 @@
 import {
+  isPriceRange,
+  isRestaurantType,
   resolveWebsiteDesignId,
   type PublicRestaurant,
   type WebsiteDesignId,
@@ -57,6 +59,8 @@ export type PublicMenuResponse = Readonly<{
   taxDisplayMode: TaxDisplayMode;
   taxNoticeKey: string | null;
   publicationVersion: string;
+  /** Publication timestamp, ISO 8601. Sourced from the publication row, not the snapshot. */
+  publishedAt: string | null;
   websiteDesignId: WebsiteDesignId;
   restaurant: PublicRestaurant | null;
   menu: PublicMenu | null;
@@ -121,6 +125,7 @@ export function parsePublicMenuResponse(
     taxDisplayMode,
     taxNoticeKey,
     publicationVersion,
+    publishedAt: parseTimestamp(root.publishedAt, "publishedAt"),
     websiteDesignId,
     restaurant,
     menu,
@@ -162,9 +167,32 @@ function parseRestaurant(
       : array(restaurant.gallery, "restaurant.gallery").map((item, index) =>
         parseGalleryPhoto(item, `restaurant.gallery[${index}]`, allowedMediaHosts),
       ),
+    // Phase 6 fields. A snapshot published earlier omits them entirely, so an unknown or absent value
+    // degrades to null — the same "absent" meaning the projection uses — rather than failing the parse.
+    restaurantType: isRestaurantType(restaurant.restaurantType) ? restaurant.restaurantType : null,
+    priceRange: isPriceRange(restaurant.priceRange) ? restaurant.priceRange : null,
+    logo: restaurant.logo === undefined || restaurant.logo === null
+      ? null
+      : parseRestaurantMainImage(restaurant.logo, allowedMediaHosts),
+    coverImage: restaurant.coverImage === undefined || restaurant.coverImage === null
+      ? null
+      : parseRestaurantMainImage(restaurant.coverImage, allowedMediaHosts),
+    publishedAt: parseTimestamp(restaurant.publishedAt, "restaurant.publishedAt"),
     publicationVersion: canonicalVersion(restaurant.publicationVersion, "restaurant.publicationVersion"),
     websiteDesignId: resolveWebsiteDesignId(restaurant.websiteDesignId),
   };
+}
+
+/**
+ * Reads an optional ISO-8601 instant. Returned as a string rather than a `Date` because its only
+ * consumers — sitemap `lastmod` and Schema.org — both want the serialized form back again.
+ */
+function parseTimestamp(value: unknown, path: string): string | null {
+  if (value === undefined || value === null) return null;
+  const candidate = string(value, path);
+  const parsed = Date.parse(candidate);
+  if (Number.isNaN(parsed)) fail(path, "ISO-8601 timestamp");
+  return new Date(parsed).toISOString();
 }
 
 function parseRestaurantMainImage(
@@ -215,6 +243,8 @@ function parseAddress(value: unknown, path: string): NonNullable<PublicRestauran
   const address = record(value, path);
   const directionsUrl = nonblank(address.directionsUrl, `${path}.directionsUrl`);
   if (!safeHttpsUrl(directionsUrl)) fail(`${path}.directionsUrl`, "safe HTTPS URL");
+  const latitude = parseCoordinate(address.latitude, `${path}.latitude`, 90);
+  const longitude = parseCoordinate(address.longitude, `${path}.longitude`, 180);
   return {
     streetLine1: nonblank(address.streetLine1, `${path}.streetLine1`),
     streetLine2: nullableString(address.streetLine2, `${path}.streetLine2`),
@@ -224,7 +254,19 @@ function parseAddress(value: unknown, path: string): NonNullable<PublicRestauran
     countryCode: nonblank(address.countryCode, `${path}.countryCode`),
     formatted: nonblank(address.formatted, `${path}.formatted`),
     directionsUrl,
+    // Schema.org `geo` is emitted only when BOTH are present; a lone axis is meaningless, so a
+    // half-populated pair is normalized to absent here rather than being guarded at every use site.
+    latitude: longitude === null ? null : latitude,
+    longitude: latitude === null ? null : longitude,
   };
+}
+
+function parseCoordinate(value: unknown, path: string, bound: number): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > bound) {
+    return fail(path, `finite number within +/-${bound}`);
+  }
+  return value;
 }
 
 function parseRegularHours(value: unknown, path: string): PublicRestaurant["regularHours"][number] {

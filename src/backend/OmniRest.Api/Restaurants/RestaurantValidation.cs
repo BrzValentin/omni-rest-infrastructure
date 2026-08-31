@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Mail;
 using System.Text.RegularExpressions;
+using OmniRest.Api.Data;
 
 namespace OmniRest.Api.Restaurants;
 
@@ -12,7 +13,10 @@ public static partial class RestaurantValidation
             ["instagram"] = ["instagram.com", "www.instagram.com"],
             ["facebook"] = ["facebook.com", "www.facebook.com"],
             ["tiktok"] = ["tiktok.com", "www.tiktok.com"],
-            ["google_business"] = ["google.com", "www.google.com", "maps.google.com", "maps.app.goo.gl"]
+            ["google_business"] = ["google.com", "www.google.com", "maps.google.com", "maps.app.goo.gl"],
+            ["x"] = ["x.com", "www.x.com", "twitter.com", "www.twitter.com"],
+            ["youtube"] = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"],
+            ["linkedin"] = ["linkedin.com", "www.linkedin.com"]
         };
 
     public static IReadOnlyDictionary<string, string[]> ValidateProfile(UpdateRestaurantProfileRequest? request)
@@ -44,6 +48,17 @@ public static partial class RestaurantValidation
         catch (InvalidTimeZoneException)
         {
             Add(errors, "timeZone", "time_zone_invalid");
+        }
+
+        // Both identity fields are optional: null or empty clears them, anything else must be an exact
+        // member of the allowed set because the value reaches JSON-LD and the check constraint verbatim.
+        if (!string.IsNullOrEmpty(request.RestaurantType) && !RestaurantTypes.IsValid(request.RestaurantType))
+        {
+            Add(errors, "restaurantType", "restaurant_type_invalid");
+        }
+        if (!string.IsNullOrEmpty(request.PriceRange) && !PriceRanges.IsValid(request.PriceRange))
+        {
+            Add(errors, "priceRange", "price_range_invalid");
         }
 
         ValidateAddress(errors, request.Address);

@@ -53,6 +53,8 @@ export const ordinaryRestaurant: PublicRestaurant = {
     countryCode: "CA",
     formatted: "1 Main Street, Winnipeg, MB R3C 1A1",
     directionsUrl: "https://maps.example.test/directions",
+    latitude: 49.8951,
+    longitude: -97.1384,
   },
   regularHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({
     dayOfWeek,
@@ -70,6 +72,11 @@ export const ordinaryRestaurant: PublicRestaurant = {
     variants: [{ url: "/media/restaurant.webp", width: 1200, height: 800 }],
   },
   gallery: galleryPhotos,
+  restaurantType: "Restaurant",
+  priceRange: "$$",
+  logo: { altText: "Prairie Table logo", variants: [{ url: "/media/logo.webp", width: 512, height: 512 }] },
+  coverImage: { altText: "Patio at dusk", variants: [{ url: "/media/cover.webp", width: 1600, height: 900 }] },
+  publishedAt: "2026-08-30T12:00:00.000Z",
   publicationVersion: "1",
   websiteDesignId: websiteDesignIds.legacyCurrent,
 };
@@ -82,6 +89,7 @@ export const ordinaryMenu: PublicMenuResponse = {
   taxDisplayMode: "exclusive",
   taxNoticeKey: "menu.tax.exclusive",
   publicationVersion: "1",
+  publishedAt: "2026-08-30T12:00:00.000Z",
   websiteDesignId: websiteDesignIds.legacyCurrent,
   restaurant: ordinaryRestaurant,
   menu: {

@@ -105,7 +105,11 @@ export function DesignMenuBrowser({ categories, locale, currency, classes }: Des
                   data-selected={enhanced && selected ? "true" : "false"}
                   aria-current={enhanced && selected ? "true" : undefined}
                   aria-controls={`category-panel-${category.id}`}
-                  href={`#${category.slug}`}
+                  // A real URL, not a fragment, so a crawler discovers every category page from
+                  // /menu (PR-19 Task 6). The click handler still switches panels in place and
+                  // pushes the `#slug` hash, so the interactive behavior is unchanged and
+                  // `/menu#slug` deep links keep working.
+                  href={`/menu/${encodeURIComponent(category.slug)}`}
                   key={category.id}
                   onClick={(event) => selectCategory(event, category.slug)}
                 >

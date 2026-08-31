@@ -18,7 +18,7 @@ public sealed class MigrationTests(PostgresFixture postgres)
 
         var pending = await context.Database.GetPendingMigrationsAsync();
         Assert.Empty(pending);
-        Assert.Equal(8, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -211,6 +211,78 @@ public sealed class MigrationTests(PostgresFixture postgres)
             """, verify);
         var definition = Assert.IsType<string>(await command.ExecuteScalarAsync());
         Assert.Contains("'processing'", definition, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PhaseSixUpgradeWidensSocialPlatformsAndAddsRestaurantIdentityColumns()
+    {
+        await using var context = CreateContext();
+        await context.Database.EnsureDeletedAsync();
+        var migrator = context.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260827120000_Phase5RestaurantGallery");
+
+        // A pre-Phase 6 tenant with a link on one of the originally allowed platforms must survive the upgrade.
+        await using (var connection = new NpgsqlConnection(postgres.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var seed = new NpgsqlCommand(
+                """
+                INSERT INTO public.restaurants (id, name, created_at, updated_at)
+                VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Legacy Social', now(), now());
+                INSERT INTO public.social_links (id, restaurant_id, platform, url, concurrency_version)
+                VALUES (
+                  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'instagram',
+                  'https://www.instagram.com/legacy',
+                  1);
+                """, connection);
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        await migrator.MigrateAsync();
+
+        await using var verify = new NpgsqlConnection(postgres.ConnectionString);
+        await verify.OpenAsync();
+        await using var constraint = new NpgsqlCommand(
+            """
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = 'public.social_links'::regclass
+              AND conname = 'ck_social_links_platform';
+            """, verify);
+        var definition = Assert.IsType<string>(await constraint.ExecuteScalarAsync());
+        Assert.Contains("'x'", definition, StringComparison.Ordinal);
+        Assert.Contains("'youtube'", definition, StringComparison.Ordinal);
+        Assert.Contains("'linkedin'", definition, StringComparison.Ordinal);
+        Assert.Contains("'instagram'", definition, StringComparison.Ordinal);
+
+        await using var preserved = new NpgsqlCommand(
+            "SELECT count(*) FROM public.social_links WHERE platform = 'instagram';", verify);
+        Assert.Equal(1L, await preserved.ExecuteScalarAsync());
+
+        // A widened platform now inserts, and the new identity columns accept only the allowed values.
+        await using var widened = new NpgsqlCommand(
+            """
+            INSERT INTO public.social_links (id, restaurant_id, platform, url, concurrency_version)
+            VALUES (gen_random_uuid(), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'youtube', 'https://www.youtube.com/@legacy', 1);
+            UPDATE public.restaurants
+               SET restaurant_type = 'CafeOrCoffeeShop', price_range = '$$'
+             WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+            """, verify);
+        await widened.ExecuteNonQueryAsync();
+
+        await using var rejectedType = new NpgsqlCommand(
+            "UPDATE public.restaurants SET restaurant_type = 'Nightclub' WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';",
+            verify);
+        var typeFailure = await Assert.ThrowsAsync<PostgresException>(() => rejectedType.ExecuteNonQueryAsync());
+        Assert.Equal("ck_restaurants_restaurant_type", typeFailure.ConstraintName);
+
+        await using var rejectedPrice = new NpgsqlCommand(
+            "UPDATE public.restaurants SET price_range = '####' WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';",
+            verify);
+        var priceFailure = await Assert.ThrowsAsync<PostgresException>(() => rejectedPrice.ExecuteNonQueryAsync());
+        Assert.Equal("ck_restaurants_price_range", priceFailure.ConstraintName);
     }
 
     private MenuDbContext CreateContext()
