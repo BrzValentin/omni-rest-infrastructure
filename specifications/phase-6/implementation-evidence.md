@@ -22,8 +22,15 @@ on this machine and why. Claims that were not verified are marked as such rather
 
 ```
 dotnet build src/backend/OmniRest.sln       → Build succeeded. 0 Error(s), 2 Warning(s)
-dotnet test  src/backend/OmniRest.sln       → Failed: 11, Passed: 226, Skipped: 0, Total: 237
+dotnet test  src/backend/OmniRest.sln       → Failed: 11, Passed: 226, Skipped: 0, Total: 237   (Windows)
+dotnet test  OmniRest.Api.Tests             → Failed:  0, Passed: 237, Skipped: 0, Total: 237   (Linux)
 ```
+
+**The suite is fully green on Linux: 237 of 237.** The Linux run is the authoritative one and was executed
+in a `mcr.microsoft.com/dotnet/sdk:10.0` container with the host Docker socket mounted so Testcontainers
+could start sibling PostgreSQL containers. It confirms that all 11 Windows failures are platform noise and
+that **no real defect was hiding underneath them** — a distinction worth making explicitly, because during
+Phase 5 a genuine regression was masked on Windows by exactly this failure set.
 
 The two build warnings are the pre-existing `NU1903` advisory for `SSH.NET 2025.1.0`, a transitive test
 dependency. Not introduced by Phase 6.
@@ -36,7 +43,7 @@ with `PlatformNotSupportedException` from `UnixMediaFileOperations.EnsureSupport
 recorded in `specifications/phase-5/README.md` section 6. The Phase 5 baseline was 190 of 201 passing on
 Windows with the same 11 failures; Phase 6 adds 36 tests, all passing.
 
-Integration tests **did** execute — Testcontainers started a real `postgres:18` container.
+Integration tests **did** execute on both platforms — Testcontainers started a real `postgres:18` container.
 
 **Migration verified against a real database.** `dotnet ef database update` applied
 `20260901120000_Phase6RestaurantIdentity` cleanly, including the widened constraint:
@@ -175,8 +182,7 @@ These are recorded as open, not as passed.
 - **`dotnet format --verify-no-changes`.** Fails for the pre-existing environmental reason in section 2.1.
 - **`npm run test:e2e` as a single command.** Blocked on Windows by the harness limitation in section 4.1.
   The individual suites were run and passed.
-- **Media upload paths for logo and cover image.** The new `PUT /api/v1/admin/restaurant/logo` and
-  `/cover-image` endpoints are covered by integration tests that attach an already-uploaded asset, which
-  passes. Uploading the underlying bytes cannot be exercised on Windows (section 2).
+- ~~Media upload paths for logo and cover image.~~ **Now verified.** These could not be exercised on
+  Windows, but the Linux run executes the byte-upload paths and passes (section 2).
 - **Field-level SEO outcomes.** Nothing here is evidence of ranking or indexing behavior in production;
   it is evidence that the documents, tags, and status codes are correct.

@@ -1,8 +1,8 @@
 # Phase 6 — Search Engine Indexing, Structured Data, and Searchable Menu
 
 **Status:** Complete. Implemented and verified — see `implementation-evidence.md`. The backend suite passes
-226/237 on Windows, where the remaining 11 are the pre-existing media-storage platform limitation recorded
-in `specifications/phase-5/README.md` section 6.
+**237/237 on Linux**, and 226/237 on Windows where the remaining 11 are the pre-existing media-storage
+platform limitation recorded in `specifications/phase-5/README.md` section 6.
 
 **Version:** 0.1
 
