@@ -286,7 +286,9 @@ public sealed partial class MenuDbContext
     {
         var entity = modelBuilder.Entity<SocialLinkEntity>();
         entity.ToTable("social_links", table =>
-            table.HasCheckConstraint("ck_social_links_platform", "platform IN ('instagram', 'facebook', 'tiktok', 'google_business')"));
+            table.HasCheckConstraint(
+                "ck_social_links_platform",
+                "platform IN ('instagram', 'facebook', 'tiktok', 'google_business', 'x', 'youtube', 'linkedin')"));
         entity.HasKey(x => x.Id);
         entity.Property(x => x.Id).HasColumnName("id");
         entity.Property(x => x.RestaurantId).HasColumnName("restaurant_id");

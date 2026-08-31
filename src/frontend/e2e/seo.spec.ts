@@ -10,10 +10,18 @@ import { expect, test } from "@playwright/test";
 
 const origin = "http://menu.localhost:3000";
 
+/**
+ * Browsers resolve `*.localhost` themselves, but Node's resolver does not, so `request.*` calls cannot
+ * dial a tenant hostname directly. They go to the loopback address with an explicit `Host` header
+ * instead — which is exactly what a real proxy does, and what the tenant resolution under test reads.
+ */
+const loopback = "http://127.0.0.1:3000";
+const asHost = (host = "menu.localhost:3000") => ({ headers: { host } });
+
 test.describe("@seo", () => {
   test("serves a per-host robots.txt that blocks private paths and names the sitemap", async ({ request }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Generated documents are browser-independent.");
-    const response = await request.get(`${origin}/robots.txt`);
+    const response = await request.get(`${loopback}/robots.txt`, asHost());
 
     expect(response.status()).toBe(200);
     const body = await response.text();
@@ -30,7 +38,7 @@ test.describe("@seo", () => {
 
   test("names the requesting tenant in robots.txt on a different host", async ({ request }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Generated documents are browser-independent.");
-    const body = await (await request.get("http://alternate.localhost:3000/robots.txt")).text();
+    const body = await (await request.get(`${loopback}/robots.txt`, asHost("alternate.localhost:3000"))).text();
 
     expect(body).toContain("Sitemap: http://alternate.localhost:3000/sitemap.xml");
     expect(body).not.toContain("menu.localhost");
@@ -38,7 +46,7 @@ test.describe("@seo", () => {
 
   test("serves a valid sitemap containing only indexable public URLs", async ({ request }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Generated documents are browser-independent.");
-    const response = await request.get(`${origin}/sitemap.xml`);
+    const response = await request.get(`${loopback}/sitemap.xml`, asHost());
 
     expect(response.status()).toBe(200);
     expect(response.headers()["content-type"]).toContain("xml");
@@ -85,22 +93,26 @@ test.describe("@seo", () => {
     await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
 
     // The header guard applies even to routes that ship without page metadata.
-    const headers = (await request.get(`${origin}/admin/login`)).headers();
+    const headers = (await request.get(`${loopback}/admin/login`, asHost())).headers();
     expect(headers["x-robots-tag"]).toContain("noindex");
   });
 
   test("returns real 404 status codes rather than soft 404s", async ({ request }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Status codes are browser-independent.");
 
-    expect((await request.get(`${origin}/`)).status()).toBe(200);
-    expect((await request.get(`${origin}/menu`)).status()).toBe(200);
-    expect((await request.get(`${origin}/menu/starters`)).status()).toBe(200);
+    expect((await request.get(`${loopback}/`, asHost())).status()).toBe(200);
+    expect((await request.get(`${loopback}/menu`, asHost())).status()).toBe(200);
+    expect((await request.get(`${loopback}/menu/starters`, asHost())).status()).toBe(200);
 
     // An unpublished category, an unknown path, and an unknown tenant are all hard 404s.
-    expect((await request.get(`${origin}/menu/not-a-real-category`)).status()).toBe(404);
-    expect((await request.get(`${origin}/no-such-page`)).status()).toBe(404);
-    expect((await request.get("http://unknown-tenant.localhost:3000/menu")).status()).toBe(404);
+    expect((await request.get(`${loopback}/menu/not-a-real-category`, asHost())).status()).toBe(404);
+    expect((await request.get(`${loopback}/no-such-page`, asHost())).status()).toBe(404);
+    expect((await request.get(`${loopback}/menu`, asHost("unknown-tenant.localhost:3000"))).status()).toBe(404);
   });
+
+  // The upstream-failure case — a transient fault must surface as a 5xx, never as a 404 — is asserted
+  // in `menu.spec.ts`. The `error.localhost` fixture fails exactly once before recovering, so a second
+  // consumer here would steal that one-shot error and make both tests unreliable.
 
   test("marks the 404 page noindex", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Head metadata is browser-independent.");
@@ -112,7 +124,7 @@ test.describe("@seo", () => {
 
   test("redirects a trailing slash to the canonical path", async ({ request }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Redirects are browser-independent.");
-    const response = await request.get(`${origin}/menu/`, { maxRedirects: 0 });
+    const response = await request.get(`${loopback}/menu/`, { ...asHost(), maxRedirects: 0 });
 
     expect([301, 308]).toContain(response.status());
     expect(response.headers()["location"]).toContain("/menu");
@@ -130,9 +142,16 @@ test.describe("@seo", () => {
     expect(schema["@type"]).toBe("Restaurant");
     expect(schema.name).toBe("Prairie Table");
     expect(schema.url).toBe(`${origin}/`);
-    expect(schema.address["@type"]).toBe("PostalAddress");
     expect(schema.openingHoursSpecification).toHaveLength(7);
     expect(schema.hasMenu).toBe(`${origin}/menu`);
+    expect(schema.menu).toBe(`${origin}/menu`);
+
+    // The seeded tenant has no address, phone, description, or social links. Those properties must
+    // therefore be *absent* rather than present and empty — this is the no-empty-property rule
+    // observed against real data, which is stronger evidence than a fully populated fixture.
+    for (const absent of ["address", "telephone", "email", "description", "geo", "sameAs"]) {
+      expect(schema, `${absent} must be omitted when unset`).not.toHaveProperty(absent);
+    }
 
     // PR-18: no property is ever present-and-empty.
     const walk = (node: unknown): void => {

@@ -23,6 +23,14 @@ internal static class AdminRestaurantEndpoints
             .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("SelectMainImage");
         admin.MapDelete("/restaurant/main-image", RemoveMainImageAsync)
             .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("RemoveMainImage");
+        admin.MapPut("/restaurant/logo", SelectLogoAsync)
+            .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("SelectLogo");
+        admin.MapDelete("/restaurant/logo", RemoveLogoAsync)
+            .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("RemoveLogo");
+        admin.MapPut("/restaurant/cover-image", SelectCoverImageAsync)
+            .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("SelectCoverImage");
+        admin.MapDelete("/restaurant/cover-image", RemoveCoverImageAsync)
+            .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("RemoveCoverImage");
         admin.MapPut("/restaurant/design", UpdateWebsiteDesignAsync)
             .AddEndpointFilter<AntiforgeryEndpointFilter>().WithName("UpdateWebsiteDesign");
         admin.MapGet("/media-assets", ListReadyMediaAsync).WithName("ListReadyMediaAssets");
@@ -136,6 +144,54 @@ internal static class AdminRestaurantEndpoints
         CancellationToken cancellationToken) => MutateAsync(
             principal, httpRequest, response, ownerContext, service,
             (access, etag) => service.SelectMainImageAsync(access, etag, new SelectMainImageRequest(null), cancellationToken), cancellationToken);
+
+    private static Task<IResult> SelectLogoAsync(
+        SelectLogoRequest? request,
+        ClaimsPrincipal principal,
+        HttpRequest httpRequest,
+        HttpResponse response,
+        IOwnerRestaurantContext ownerContext,
+        IRestaurantManagementService service,
+        CancellationToken cancellationToken)
+    {
+        if (request is null) return Task.FromResult<IResult>(ApiProblems.Validation(new Dictionary<string, string[]> { ["request"] = ["request_required"] }));
+        return MutateAsync(principal, httpRequest, response, ownerContext, service,
+            (access, etag) => service.SelectLogoAsync(access, etag, request, cancellationToken), cancellationToken);
+    }
+
+    private static Task<IResult> RemoveLogoAsync(
+        ClaimsPrincipal principal,
+        HttpRequest httpRequest,
+        HttpResponse response,
+        IOwnerRestaurantContext ownerContext,
+        IRestaurantManagementService service,
+        CancellationToken cancellationToken) => MutateAsync(
+            principal, httpRequest, response, ownerContext, service,
+            (access, etag) => service.SelectLogoAsync(access, etag, new SelectLogoRequest(null), cancellationToken), cancellationToken);
+
+    private static Task<IResult> SelectCoverImageAsync(
+        SelectCoverImageRequest? request,
+        ClaimsPrincipal principal,
+        HttpRequest httpRequest,
+        HttpResponse response,
+        IOwnerRestaurantContext ownerContext,
+        IRestaurantManagementService service,
+        CancellationToken cancellationToken)
+    {
+        if (request is null) return Task.FromResult<IResult>(ApiProblems.Validation(new Dictionary<string, string[]> { ["request"] = ["request_required"] }));
+        return MutateAsync(principal, httpRequest, response, ownerContext, service,
+            (access, etag) => service.SelectCoverImageAsync(access, etag, request, cancellationToken), cancellationToken);
+    }
+
+    private static Task<IResult> RemoveCoverImageAsync(
+        ClaimsPrincipal principal,
+        HttpRequest httpRequest,
+        HttpResponse response,
+        IOwnerRestaurantContext ownerContext,
+        IRestaurantManagementService service,
+        CancellationToken cancellationToken) => MutateAsync(
+            principal, httpRequest, response, ownerContext, service,
+            (access, etag) => service.SelectCoverImageAsync(access, etag, new SelectCoverImageRequest(null), cancellationToken), cancellationToken);
 
     private static Task<IResult> UpdateWebsiteDesignAsync(
         UpdateWebsiteDesignRequest? request,

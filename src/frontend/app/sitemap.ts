@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-import { getPublicMenu, PublicMenuApiError } from "@/lib/menu-api";
+import { readSite } from "@/lib/public-data";
 import { siteOrigin } from "@/lib/seo";
 
 /**
@@ -21,15 +21,11 @@ export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const origin = await siteOrigin();
 
-  let site;
-  try {
-    site = await getPublicMenu();
-  } catch (error) {
-    // An unknown host has no published content to advertise. Returning an empty sitemap is correct and
-    // is preferable to a 500, which a crawler would retry.
-    if (error instanceof PublicMenuApiError) return [];
-    throw error;
-  }
+  // An unknown host has nothing published to advertise, so an empty sitemap is the correct answer.
+  // A transient upstream fault is not the same thing and is deliberately left to propagate: a `500`
+  // invites a retry, whereas an empty sitemap would assert that this tenant has no pages at all.
+  const site = await readSite();
+  if (!site) return [];
 
   const lastModified = site.restaurant?.publishedAt ?? site.publishedAt ?? undefined;
   // `/` and `/menu` always exist and always return 200 — `/menu` renders a "menu coming soon" state

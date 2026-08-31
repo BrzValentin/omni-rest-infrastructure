@@ -33,7 +33,7 @@ public sealed class PublicMenuReader(
 
         var publication = await dbContext.Publications.AsNoTracking()
             .Where(item => item.RestaurantId == restaurant.Id && item.IsCurrent)
-            .Select(item => new { item.Version, item.SnapshotJson })
+            .Select(item => new { item.Version, item.SnapshotJson, item.PublishedAt })
             .SingleOrDefaultAsync(cancellationToken);
 
         if (publication is null)
@@ -66,11 +66,15 @@ public sealed class PublicMenuReader(
             response = response with
             {
                 WebsiteDesignId = resolvedDesignId,
+                // The publication ROW owns this, never the snapshot, so pre-Phase 6 snapshots need no
+                // back-compat defaulting. It is invariant per version, which is already the cache key.
+                PublishedAt = publication.PublishedAt,
                 Restaurant = response.Restaurant is null
                     ? null
                     : response.Restaurant with
                     {
                         WebsiteDesignId = resolvedDesignId,
+                        PublishedAt = publication.PublishedAt,
                         // Snapshots published before Phase 5 carry no gallery array at all.
                         Gallery = response.Restaurant.Gallery is { } gallery ? gallery : []
                     }

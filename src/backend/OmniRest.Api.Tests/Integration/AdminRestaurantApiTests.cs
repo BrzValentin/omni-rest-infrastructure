@@ -648,6 +648,163 @@ public sealed class AdminRestaurantApiTests(PostgresFixture postgres)
         }
     }
 
+    /// <summary>
+    /// Phase 6 identity: the logo slot round-trips from selection through publication to the public
+    /// contract, another tenant's asset is a 404, and removal clears it. Deliberately a new test method so
+    /// the outbox and audit counts asserted by
+    /// <see cref="ScheduleSocialSpecialAndMainImageMutationsAreTransactionalAndTenantSafe"/> stay untouched.
+    /// </summary>
+    [Fact]
+    public async Task OwnerCanSelectLogoAndCoverImageAndTheyReachThePublicContract()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        await CreateOwnerAsync(factory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(current);
+        Assert.Null(current.Logo);
+        Assert.Null(current.CoverImage);
+
+        Guid ownLogo;
+        Guid ownCover;
+        Guid alternateAsset;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            var ordinary = await db.Restaurants.SingleAsync(item => item.Id == GuardedSampleDataSeeder.OrdinaryRestaurantId);
+            var alternate = await db.Restaurants.SingleAsync(item => item.Id == GuardedSampleDataSeeder.AlternateRestaurantId);
+            ownLogo = AddReadyAsset(db, ordinary, "Prairie Table wordmark", "https://images.example.test/logo.webp").Id;
+            ownCover = AddReadyAsset(db, ordinary, "Prairie Table patio", "https://images.example.test/cover.webp").Id;
+            alternateAsset = AddReadyAsset(db, alternate, "Other tenant logo", "https://images.example.test/other.webp").Id;
+            await db.SaveChangesAsync();
+        }
+
+        var token = await GetAntiforgeryAsync(client);
+        using var crossTenant = await PutWithHeadersAsync(
+            client, "/api/v1/admin/restaurant/logo", new SelectLogoRequest(alternateAsset), token, current.ETag);
+        Assert.Equal(HttpStatusCode.NotFound, crossTenant.StatusCode);
+
+        token = await GetAntiforgeryAsync(client);
+        using var crossTenantCover = await PutWithHeadersAsync(
+            client, "/api/v1/admin/restaurant/cover-image", new SelectCoverImageRequest(alternateAsset), token, current.ETag);
+        Assert.Equal(HttpStatusCode.NotFound, crossTenantCover.StatusCode);
+
+        token = await GetAntiforgeryAsync(client);
+        var withLogo = await PutMutationAsync(
+            client, "/api/v1/admin/restaurant/logo", new SelectLogoRequest(ownLogo), token, current.ETag);
+        Assert.Equal(ownLogo.ToString(), withLogo.Restaurant.Logo?.Id);
+        Assert.Equal("Prairie Table wordmark", withLogo.Restaurant.Logo?.AltText);
+        Assert.Equal(PublicationStatuses.Succeeded, withLogo.Publication.Status);
+
+        token = await GetAntiforgeryAsync(client);
+        var withCover = await PutMutationAsync(
+            client, "/api/v1/admin/restaurant/cover-image", new SelectCoverImageRequest(ownCover), token,
+            withLogo.Restaurant.ETag);
+        Assert.Equal(ownCover.ToString(), withCover.Restaurant.CoverImage?.Id);
+        Assert.Equal(ownLogo.ToString(), withCover.Restaurant.Logo?.Id);
+
+        token = await GetAntiforgeryAsync(client);
+        var identified = await PutMutationAsync(
+            client, "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { RestaurantType = "CafeOrCoffeeShop", PriceRange = "$$" },
+            token, withCover.Restaurant.ETag);
+        Assert.Equal("CafeOrCoffeeShop", identified.Restaurant.RestaurantType);
+        Assert.Equal("$$", identified.Restaurant.PriceRange);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var published = await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant");
+        Assert.NotNull(published);
+        Assert.Equal("Prairie Table wordmark", published.Logo?.AltText);
+        Assert.Equal("https://images.example.test/logo.webp", published.Logo?.Variants.Single().Url);
+        Assert.Equal("Prairie Table patio", published.CoverImage?.AltText);
+        Assert.Equal("CafeOrCoffeeShop", published.RestaurantType);
+        Assert.Equal("$$", published.PriceRange);
+        Assert.NotNull(published.PublishedAt);
+
+        client.DefaultRequestHeaders.Host = "localhost";
+        token = await GetAntiforgeryAsync(client);
+        using var removedLogo = await SendWithHeadersAsync(
+            client, HttpMethod.Delete, "/api/v1/admin/restaurant/logo", new { }, token, identified.Restaurant.ETag);
+        Assert.Equal(HttpStatusCode.OK, removedLogo.StatusCode);
+        var afterRemoval = (await removedLogo.Content.ReadFromJsonAsync<AdminMutationResponse>())!;
+        Assert.Null(afterRemoval.Restaurant.Logo);
+        Assert.Equal(ownCover.ToString(), afterRemoval.Restaurant.CoverImage?.Id);
+
+        token = await GetAntiforgeryAsync(client);
+        using var removedCover = await SendWithHeadersAsync(
+            client, HttpMethod.Delete, "/api/v1/admin/restaurant/cover-image", new { }, token,
+            afterRemoval.Restaurant.ETag);
+        Assert.Equal(HttpStatusCode.OK, removedCover.StatusCode);
+        Assert.Null((await removedCover.Content.ReadFromJsonAsync<AdminMutationResponse>())!.Restaurant.CoverImage);
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<MenuDbContext>();
+        var actions = await verify.AuditEvents.Where(item => item.Action.StartsWith("restaurant."))
+            .Select(item => item.Action).ToArrayAsync();
+        Assert.Equal(
+            new[]
+            {
+                "restaurant.cover_image.removed", "restaurant.cover_image.selected", "restaurant.logo.removed",
+                "restaurant.logo.selected", "restaurant.profile.updated"
+            },
+            actions.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public async Task SelectingAnUnreadyAssetAsLogoIsRejectedAsMediaNotReady()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        await CreateOwnerAsync(factory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(current);
+
+        Guid pending;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            var ordinary = await db.Restaurants.SingleAsync(item => item.Id == GuardedSampleDataSeeder.OrdinaryRestaurantId);
+            var asset = AddReadyAsset(db, ordinary, "Still processing", "https://images.example.test/pending.webp");
+            asset.ProcessingStatus = "pending";
+            await db.SaveChangesAsync();
+            pending = asset.Id;
+        }
+
+        using var response = await PutWithHeadersAsync(
+            client, "/api/v1/admin/restaurant/logo", new SelectLogoRequest(pending),
+            await GetAntiforgeryAsync(client), current.ETag);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("media_not_ready", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    private static MediaAssetEntity AddReadyAsset(MenuDbContext db, RestaurantEntity restaurant, string altText, string url)
+    {
+        var asset = new MediaAssetEntity
+        {
+            Id = Guid.NewGuid(),
+            RestaurantId = restaurant.Id,
+            Restaurant = restaurant,
+            AltText = altText,
+            ProcessingStatus = "ready"
+        };
+        asset.Variants.Add(new MediaVariantEntity
+        {
+            Id = Guid.NewGuid(),
+            RestaurantId = restaurant.Id,
+            MediaAssetId = asset.Id,
+            MediaAsset = asset,
+            Url = url,
+            Width = 512,
+            Height = 512
+        });
+        db.MediaAssets.Add(asset);
+        return asset;
+    }
+
     private static UpdateRestaurantProfileRequest ValidProfile(string name) => new(
         name, "Seasonal local food", "+12045550123", "+1 204-555-0123", "hello@example.test",
         "America/Winnipeg", new AdminAddressRequest(

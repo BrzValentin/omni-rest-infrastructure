@@ -19,11 +19,16 @@ A `Host` header is client-controlled, so three guards apply together:
    credential-bearing, or path-bearing value. The port is retained — unlike `normalizePublicHost` in
    `lib/menu-api.ts`, which strips it because the backend resolves tenants by hostname alone — because an
    origin without a port is not addressable in local development.
-2. **Scheme.** Taken from the deployment-owned `OMNI_REST_FORWARDED_PROTO`, never from a client
-   `X-Forwarded-Proto`. This reuses the rule `app/api/v1/[...path]/route.ts` already applies. With no
-   configuration, loopback-family hosts fall back to `http` and everything else to `https`.
-3. **Existence.** A canonical is only ever emitted after the backend has resolved the host to a published
-   restaurant. An attacker-supplied host produces a `404` long before any URL is generated.
+2. **Scheme.** Taken from the deployment-owned `OMNI_REST_PUBLIC_SCHEME`, never from a client
+   `X-Forwarded-Proto`. This follows the rule `app/api/v1/[...path]/route.ts` already applies, but uses
+   its **own** variable rather than reusing `OMNI_REST_FORWARDED_PROTO`. The two look interchangeable
+   and are not: `OMNI_REST_FORWARDED_PROTO` is set to `https` in local development as a deliberate lie,
+   so the API believes the request arrived over TLS and issues its `Secure` auth cookies over plain
+   HTTP. Deriving canonical URLs from it would make every local canonical and sitemap entry claim
+   `https://…:3000` for a site actually served over `http`. With no configuration, loopback-family
+   hosts fall back to `http` and everything else to `https`.
+3. **Existence.** A canonical is only ever emitted after the backend has resolved the host to a
+   published restaurant. An attacker-supplied host produces a `404` long before any URL is generated.
 
 `metadataBase` is deliberately never set. Next.js ignores it whenever a metadata field supplies an absolute
 URL, and any build-time base would be wrong for every tenant. The consequence is a standing rule: **every

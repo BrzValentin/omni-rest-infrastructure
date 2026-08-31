@@ -19,7 +19,13 @@ public sealed record UpdateRestaurantProfileRequest(
     string? PhoneDisplay,
     string? Email,
     string TimeZone,
-    AdminAddressRequest Address);
+    AdminAddressRequest Address,
+
+    /// <summary>Schema.org FoodEstablishment subtype; see <see cref="Data.RestaurantTypes"/>.</summary>
+    string? RestaurantType = null,
+
+    /// <summary>Schema.org price band; see <see cref="Data.PriceRanges"/>.</summary>
+    string? PriceRange = null);
 
 public sealed record AdminHourIntervalRequest(string OpensAt, string ClosesAt);
 public sealed record AdminRegularHoursDayRequest(int DayOfWeek, IReadOnlyList<AdminHourIntervalRequest> Intervals);
@@ -32,6 +38,8 @@ public sealed record AdminSpecialHoursRequest(
 public sealed record AdminSocialLinkRequest(string Platform, string Url);
 public sealed record UpdateSocialLinksRequest(IReadOnlyList<AdminSocialLinkRequest> Links);
 public sealed record SelectMainImageRequest(Guid? MediaAssetId);
+public sealed record SelectLogoRequest(Guid? MediaAssetId);
+public sealed record SelectCoverImageRequest(Guid? MediaAssetId);
 public sealed record UpdateMediaAltTextRequest(string AltText);
 public sealed record UpdateWebsiteDesignRequest(string DesignId);
 
@@ -86,7 +94,11 @@ public sealed record AdminRestaurantResponse(
     IReadOnlyList<AdminWebsiteDesignResponse> WebsiteDesigns,
     string DraftVersion,
     string ETag,
-    PublicationStatusResponse? PublicationStatus);
+    PublicationStatusResponse? PublicationStatus,
+    string? RestaurantType = null,
+    string? PriceRange = null,
+    AdminMainImageResponse? Logo = null,
+    AdminMainImageResponse? CoverImage = null);
 
 public sealed record AdminMutationResponse(AdminRestaurantResponse Restaurant, PublicationStatusResponse Publication);
 

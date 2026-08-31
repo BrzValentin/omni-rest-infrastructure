@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/JsonLd";
 import { HomeDesignRenderer } from "@/components/designs/HomeDesignRenderer";
 import { buildRestaurantSchema } from "@/lib/json-ld";
-import { readRestaurant, readSite } from "@/lib/public-data";
+import { readRestaurant, readSiteForSchema } from "@/lib/public-data";
 import { publicPageMetadata, siteOrigin } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export default async function Home() {
   const restaurant = await readRestaurant();
   // `hasMenu` must only be emitted when the URL leads somewhere, so the schema needs to know whether a
   // menu is published. Both reads are request-memoized, so this costs no extra round trip.
-  const site = await readSite();
+  const site = await readSiteForSchema();
   const origin = await siteOrigin();
 
   return (

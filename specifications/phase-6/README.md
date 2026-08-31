@@ -1,6 +1,8 @@
 # Phase 6 — Search Engine Indexing, Structured Data, and Searchable Menu
 
-**Status:** In progress.
+**Status:** Complete. Implemented and verified — see `implementation-evidence.md`. The backend suite passes
+226/237 on Windows, where the remaining 11 are the pre-existing media-storage platform limitation recorded
+in `specifications/phase-5/README.md` section 6.
 
 **Version:** 0.1
 
@@ -52,10 +54,9 @@ architecture, it does not fork it.**
    vector. Two existing guards are reused rather than reinvented: `normalizePublicHost` in `lib/menu-api.ts`
    rejects malformed hosts, and the backend resolves the restaurant from the host and returns `404` for an
    unknown one. A canonical URL is therefore only ever emitted for a host that already resolved to a published
-   restaurant. The scheme comes from deployment-owned configuration, reusing the existing
-   `OMNI_REST_FORWARDED_PROTO` precedent in `app/api/v1/[...path]/route.ts`; a client-supplied
-   `X-Forwarded-Proto` is never trusted.
-
+   restaurant. The scheme comes from its own deployment-owned `OMNI_REST_PUBLIC_SCHEME`; a client-supplied
+   `X-Forwarded-Proto` is never trusted, and `OMNI_REST_FORWARDED_PROTO` is deliberately *not* reused
+   because it is set to `https` in local development as a lie to make `Secure` cookies work over HTTP.
 5. **Category pages are added; dish pages are not.** PR-17 Task 1 classifies "Dish Page (if it has its own
    URL)" and PR-19 Task 5 requires "Menu URL Integration". Categories already carry a validated, stable slug
    (`menu_categories.slug`, Phase 2 PR-6), so `/menu/{categorySlug}` ships as a real indexable route. Dishes

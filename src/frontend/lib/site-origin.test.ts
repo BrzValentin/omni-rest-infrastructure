@@ -93,3 +93,32 @@ describe("absoluteUrlFrom", () => {
     expect(() => absoluteUrlFrom(origin, path)).toThrow(UnsafeHostError);
   });
 });
+
+describe("scheme configuration source", () => {
+  it("does not read OMNI_REST_FORWARDED_PROTO", () => {
+    // That variable is set to `https` in local development as a deliberate lie, so the API will issue
+    // Secure cookies over plain HTTP. Canonical URLs must not inherit it.
+    const previous = process.env.OMNI_REST_FORWARDED_PROTO;
+    const previousPublic = process.env.OMNI_REST_PUBLIC_SCHEME;
+    process.env.OMNI_REST_FORWARDED_PROTO = "https";
+    delete process.env.OMNI_REST_PUBLIC_SCHEME;
+    try {
+      expect(buildOrigin("menu.localhost:3000")).toBe("http://menu.localhost:3000");
+    } finally {
+      if (previous === undefined) delete process.env.OMNI_REST_FORWARDED_PROTO;
+      else process.env.OMNI_REST_FORWARDED_PROTO = previous;
+      if (previousPublic !== undefined) process.env.OMNI_REST_PUBLIC_SCHEME = previousPublic;
+    }
+  });
+
+  it("honours OMNI_REST_PUBLIC_SCHEME when it is set", () => {
+    const previous = process.env.OMNI_REST_PUBLIC_SCHEME;
+    process.env.OMNI_REST_PUBLIC_SCHEME = "https";
+    try {
+      expect(buildOrigin("menu.localhost:3000")).toBe("https://menu.localhost:3000");
+    } finally {
+      if (previous === undefined) delete process.env.OMNI_REST_PUBLIC_SCHEME;
+      else process.env.OMNI_REST_PUBLIC_SCHEME = previous;
+    }
+  });
+});

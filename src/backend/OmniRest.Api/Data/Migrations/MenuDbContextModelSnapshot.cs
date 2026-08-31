@@ -1040,6 +1040,10 @@ namespace OmniRest.Api.Data.Migrations
                         .HasDefaultValue(1L)
                         .HasColumnName("concurrency_version");
 
+                    b.Property<Guid?>("CoverMediaAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cover_media_asset_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1061,6 +1065,10 @@ namespace OmniRest.Api.Data.Migrations
                         .HasColumnType("character varying(320)")
                         .HasColumnName("email");
 
+                    b.Property<Guid?>("LogoMediaAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("logo_media_asset_id");
+
                     b.Property<Guid?>("MainMediaAssetId")
                         .HasColumnType("uuid")
                         .HasColumnName("main_media_asset_id");
@@ -1081,11 +1089,25 @@ namespace OmniRest.Api.Data.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("phone_e164");
 
+                    b.Property<string>("PriceRange")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("price_range");
+
+                    b.Property<string>("RestaurantType")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("restaurant_type");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CoverMediaAssetId", "Id");
+
+                    b.HasIndex("LogoMediaAssetId", "Id");
 
                     b.HasIndex("MainMediaAssetId", "Id");
 
@@ -1096,6 +1118,10 @@ namespace OmniRest.Api.Data.Migrations
                             t.HasCheckConstraint("ck_restaurants_name", "length(btrim(name)) > 0");
 
                             t.HasCheckConstraint("ck_restaurants_phone_e164", "phone_e164 IS NULL OR phone_e164 ~ '^\\+[1-9][0-9]{7,14}$'");
+
+                            t.HasCheckConstraint("ck_restaurants_price_range", "price_range IS NULL OR price_range IN ('$','$$','$$$','$$$$')");
+
+                            t.HasCheckConstraint("ck_restaurants_restaurant_type", "restaurant_type IS NULL OR restaurant_type IN ('Restaurant','CafeOrCoffeeShop','Bakery','BarOrPub','Brewery','Distillery','FastFoodRestaurant','IceCreamShop','Winery')");
                         });
                 });
 
@@ -1254,7 +1280,7 @@ namespace OmniRest.Api.Data.Migrations
 
                     b.ToTable("social_links", "public", t =>
                         {
-                            t.HasCheckConstraint("ck_social_links_platform", "platform IN ('instagram', 'facebook', 'tiktok', 'google_business')");
+                            t.HasCheckConstraint("ck_social_links_platform", "platform IN ('instagram', 'facebook', 'tiktok', 'google_business', 'x', 'youtube', 'linkedin')");
                         });
                 });
 
@@ -1577,11 +1603,27 @@ namespace OmniRest.Api.Data.Migrations
 
             modelBuilder.Entity("OmniRest.Api.Data.RestaurantEntity", b =>
                 {
+                    b.HasOne("OmniRest.Api.Data.MediaAssetEntity", "CoverMediaAsset")
+                        .WithMany()
+                        .HasForeignKey("CoverMediaAssetId", "Id")
+                        .HasPrincipalKey("Id", "RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("OmniRest.Api.Data.MediaAssetEntity", "LogoMediaAsset")
+                        .WithMany()
+                        .HasForeignKey("LogoMediaAssetId", "Id")
+                        .HasPrincipalKey("Id", "RestaurantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("OmniRest.Api.Data.MediaAssetEntity", "MainMediaAsset")
                         .WithMany()
                         .HasForeignKey("MainMediaAssetId", "Id")
                         .HasPrincipalKey("Id", "RestaurantId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CoverMediaAsset");
+
+                    b.Navigation("LogoMediaAsset");
 
                     b.Navigation("MainMediaAsset");
                 });

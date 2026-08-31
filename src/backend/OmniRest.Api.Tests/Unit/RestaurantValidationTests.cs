@@ -48,12 +48,87 @@ public sealed class RestaurantValidationTests
     [InlineData("instagram", "https://evil.example/prairie_table", false)]
     [InlineData("facebook", "http://facebook.com/prairie", false)]
     [InlineData("unknown", "https://example.test", false)]
+    [InlineData("x", "https://x.com/prairie_table", true)]
+    [InlineData("x", "https://www.x.com/prairie_table", true)]
+    [InlineData("x", "https://twitter.com/prairie_table", true)]
+    [InlineData("x", "https://www.twitter.com/prairie_table", true)]
+    [InlineData("x", "https://x.example/prairie_table", false)]
+    [InlineData("x", "http://x.com/prairie_table", false)]
+    [InlineData("youtube", "https://youtube.com/@prairietable", true)]
+    [InlineData("youtube", "https://www.youtube.com/@prairietable", true)]
+    [InlineData("youtube", "https://m.youtube.com/@prairietable", true)]
+    [InlineData("youtube", "https://youtu.be/abcdefghijk", true)]
+    [InlineData("youtube", "https://youtube.evil.example/@prairietable", false)]
+    [InlineData("linkedin", "https://linkedin.com/company/prairie-table", true)]
+    [InlineData("linkedin", "https://www.linkedin.com/company/prairie-table", true)]
+    [InlineData("linkedin", "https://m.linkedin.com/company/prairie-table", false)]
     public void SocialValidationEnforcesPlatformHttpsHosts(string platform, string url, bool valid)
     {
         var errors = RestaurantValidation.ValidateSocialLinks(
             new UpdateSocialLinksRequest([new AdminSocialLinkRequest(platform, url)]));
         Assert.Equal(valid, errors.Count == 0);
     }
+
+    [Fact]
+    public void SocialLinkCountCapWidensWithTheSupportedPlatformSet()
+    {
+        // The cap is SocialHosts.Count, so every supported platform must fit in one request.
+        var links = new[] { "instagram", "facebook", "tiktok", "google_business", "x", "youtube", "linkedin" }
+            .Select(platform => new AdminSocialLinkRequest(platform, SocialUrl(platform)))
+            .ToArray();
+        Assert.Empty(RestaurantValidation.ValidateSocialLinks(new UpdateSocialLinksRequest(links)));
+    }
+
+    [Theory]
+    [InlineData("Restaurant", true)]
+    [InlineData("CafeOrCoffeeShop", true)]
+    [InlineData("Winery", true)]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("restaurant", false)]
+    [InlineData("FoodEstablishment", false)]
+    [InlineData("Nightclub", false)]
+    public void RestaurantTypeMustBeNullEmptyOrAnExactSchemaOrgSubtype(string? value, bool valid)
+    {
+        var errors = RestaurantValidation.ValidateProfile(ValidProfile() with { RestaurantType = value });
+        Assert.Equal(valid, errors.Count == 0);
+        if (!valid)
+        {
+            Assert.Equal(["restaurant_type_invalid"], errors["restaurantType"]);
+        }
+    }
+
+    [Theory]
+    [InlineData("$", true)]
+    [InlineData("$$", true)]
+    [InlineData("$$$", true)]
+    [InlineData("$$$$", true)]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("$$$$$", false)]
+    [InlineData("cheap", false)]
+    [InlineData("€€", false)]
+    public void PriceRangeMustBeNullEmptyOrOneOfTheFourBands(string? value, bool valid)
+    {
+        var errors = RestaurantValidation.ValidateProfile(ValidProfile() with { PriceRange = value });
+        Assert.Equal(valid, errors.Count == 0);
+        if (!valid)
+        {
+            Assert.Equal(["price_range_invalid"], errors["priceRange"]);
+        }
+    }
+
+    private static string SocialUrl(string platform) => platform switch
+    {
+        "instagram" => "https://www.instagram.com/prairie_table",
+        "facebook" => "https://www.facebook.com/prairie_table",
+        "tiktok" => "https://www.tiktok.com/@prairie_table",
+        "google_business" => "https://maps.app.goo.gl/prairie",
+        "x" => "https://x.com/prairie_table",
+        "youtube" => "https://www.youtube.com/@prairietable",
+        "linkedin" => "https://www.linkedin.com/company/prairie-table",
+        _ => throw new ArgumentOutOfRangeException(nameof(platform))
+    };
 
     [Fact]
     public void SpecialHoursEnforceClosedAndOpenIntervalRules()

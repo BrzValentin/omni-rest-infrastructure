@@ -14,7 +14,14 @@ public sealed record PublicMenuResponse(
     string PublicationVersion,
     PublicMenu? Menu,
     PublicRestaurantResponse? Restaurant = null,
-    string? WebsiteDesignId = null);
+    string? WebsiteDesignId = null,
+
+    /// <summary>
+    /// When the current publication row was written. Read from <c>publications.published_at</c> at read
+    /// time, never from the serialized snapshot, so pre-Phase 6 snapshots surface it too. Null before the
+    /// restaurant has published for the first time.
+    /// </summary>
+    DateTimeOffset? PublishedAt = null);
 
 public sealed record PublicMenu(string Id, string Name, IReadOnlyList<PublicCategory> Categories);
 

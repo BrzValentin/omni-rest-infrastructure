@@ -16,7 +16,7 @@
  * local development (`http://menu.localhost:3000`).
  *
  * This module is deliberately free of `server-only` and `next/headers` so the parsing rules can be unit
- * tested. The request-bound wrappers live in `lib/site-origin-request.ts`.
+ * tested. The request-bound wrappers live in `lib/seo.ts`.
  */
 export class UnsafeHostError extends Error {
   constructor(reason: string) {
@@ -53,8 +53,14 @@ export function normalizeOriginHost(rawHost: string | null | undefined): string 
  * Chooses the public scheme. Explicit deployment configuration always wins; otherwise loopback-family
  * hosts fall back to `http` so local development produces addressable URLs, and everything else to
  * `https`, which is the only scheme a production tenant is served on.
+ *
+ * This reads `OMNI_REST_PUBLIC_SCHEME`, deliberately **not** `OMNI_REST_FORWARDED_PROTO`. The two look
+ * interchangeable and are not: `OMNI_REST_FORWARDED_PROTO` is set to `https` in local development
+ * precisely as a lie, so the API believes the request arrived over TLS and will issue its `Secure`
+ * auth cookies over plain HTTP. Deriving canonical URLs from it would make every local canonical and
+ * sitemap entry claim `https://…:3000` for a site actually served over `http`.
  */
-export function resolveScheme(host: string, configured = process.env.OMNI_REST_FORWARDED_PROTO): "http" | "https" {
+export function resolveScheme(host: string, configured = process.env.OMNI_REST_PUBLIC_SCHEME): "http" | "https" {
   if (configured === "http" || configured === "https") return configured;
   const hostname = host.split(":", 1)[0];
   return loopbackHosts.has(hostname) || hostname.endsWith(".localhost") ? "http" : "https";
