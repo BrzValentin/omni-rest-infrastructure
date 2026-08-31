@@ -54,6 +54,9 @@ export type AdminRestaurant = {
   id: string; name: string; description: string | null; phoneE164: string | null;
   phoneDisplay: string | null; email: string | null; timeZone: string; address: Address | null;
   regularHours: RegularHoursDay[]; specialHours: SpecialHours[]; socialLinks: SocialLink[];
+  /** Phase 6 identity fields. Null until an owner sets them. */
+  restaurantType: RestaurantType | null; priceRange: PriceRange | null;
+  logo: MainImage | null; coverImage: MainImage | null;
   mainImage: MainImage | null; draftDesignId: WebsiteDesignId; publishedDesignId: WebsiteDesignId;
   websiteDesigns: AdminWebsiteDesign[]; draftVersion: string; eTag: string;
   publicationStatus: PublicationStatus | null;

@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import Image from "next/image";
 import { BrowserApiError, browserGet, mutate, uploadMedia } from "@/lib/browser-api";
 import { isE164 } from "@/lib/phone";
-import type { AdminMediaAsset, AdminMutation, AdminRestaurant, PublicationStatus, RegularHoursDay, SocialLink, SpecialHours } from "@/lib/restaurant-contract";
+import type { AdminMediaAsset, AdminMutation, AdminRestaurant, MainImage, PublicationStatus, RegularHoursDay, SocialLink, SpecialHours } from "@/lib/restaurant-contract";
+import { priceRanges, restaurantTypes } from "@/lib/restaurant-contract";
 import styles from "@/app/admin/admin.module.css";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -100,11 +101,84 @@ function DeleteSpecialDialog({ onCancel, onConfirm }: { onCancel: () => void; on
   );
 }
 
+/**
+ * One image slot backed by the shared media library.
+ *
+ * The main image, logo, and cover image differ only in their label and endpoint, so they share this
+ * component rather than repeating the picker three times. Upload stays on the main-image section: it
+ * adds to the tenant's media library, which all three slots select from.
+ */
+function ImageSlot({
+  title, endpoint, current, assets, busy, onSave,
+}: Readonly<{
+  title: string;
+  endpoint: string;
+  current: MainImage | null;
+  assets: AdminMediaAsset[];
+  busy: string | null;
+  onSave: (path: string, body: unknown, label: string, method?: "POST" | "PUT" | "DELETE") => Promise<boolean>;
+}>) {
+  const [selectedId, setSelectedId] = useState(current?.id ?? "");
+  const label = title.toLowerCase();
+  const titleId = `${endpoint.replace(/\W+/g, "-")}-title`;
+  const variant = current?.variants[0];
+
+  return (
+    <section className={styles.editorSection} aria-labelledby={titleId}>
+      <h2 id={titleId}>{title}</h2>
+      {current ? (
+        <div>
+          <p><strong>Selected:</strong> {current.altText} ({current.processingStatus})</p>
+          {variant && (
+            <Image
+              unoptimized
+              loader={({ src }) => src}
+              className={styles.imagePreview}
+              src={variant.url}
+              width={variant.width}
+              height={variant.height}
+              alt={current.altText}
+            />
+          )}
+        </div>
+      ) : <p>No {label} selected.</p>}
+      {/* Labels and button names include the slot name so all three image sections stay
+          distinguishable to assistive technology and to tests. */}
+      <label>
+        {`Ready image for ${label}`}
+        <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+          <option value="">Choose an image</option>
+          {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.altText}</option>)}
+        </select>
+      </label>
+      <div className={styles.buttonRow}>
+        <button
+          className={styles.primaryButton}
+          type="button"
+          disabled={!selectedId || busy !== null}
+          onClick={() => void onSave(endpoint, { mediaAssetId: selectedId }, title)}
+        >
+          {`Select ${label}`}
+        </button>
+        <button
+          type="button"
+          className={styles.dangerButton}
+          disabled={!current || busy !== null}
+          onClick={() => void onSave(endpoint, undefined, title, "DELETE")}
+        >
+          {`Remove ${label}`}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRestaurant; initialMedia: AdminMediaAsset[] }) {
   const [restaurant, setRestaurant] = useState(initial);
   const [profile, setProfile] = useState({
     name: initial.name, description: initial.description ?? "", phoneE164: initial.phoneE164 ?? "",
     phoneDisplay: initial.phoneDisplay ?? "", email: initial.email ?? "", timeZone: initial.timeZone,
+    restaurantType: initial.restaurantType ?? "", priceRange: initial.priceRange ?? "",
     address: initial.address ?? EMPTY_ADDRESS,
   });
   const [hours, setHours] = useState(() => normalizeHours(initial.regularHours));
@@ -168,6 +242,8 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       phoneE164: profile.phoneE164 || null,
       phoneDisplay: profile.phoneDisplay || null,
       email: profile.email || null,
+      restaurantType: profile.restaurantType || null,
+      priceRange: profile.priceRange || null,
       address: { ...profile.address, line2: profile.address.line2 || null },
     }, "Profile");
   }
@@ -252,6 +328,9 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
           <label>Phone display<input inputMode="tel" placeholder="(204) 555-0123" {...fieldA11y("phoneDisplay")} value={profile.phoneDisplay} onChange={(e) => setProfile({ ...profile, phoneDisplay: e.target.value })} />{errorFor("phoneDisplay")}</label>
           <label>Email<input type="email" autoComplete="email" {...fieldA11y("email")} value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />{errorFor("email")}</label>
           <label>Time zone<input required {...fieldA11y("timeZone")} value={profile.timeZone} onChange={(e) => setProfile({ ...profile, timeZone: e.target.value })} />{errorFor("timeZone")}</label>
+          <label>Establishment type<select {...fieldA11y("restaurantType")} value={profile.restaurantType} onChange={(e) => setProfile({ ...profile, restaurantType: e.target.value })} aria-describedby="restaurant-type-help"><option value="">Not specified</option>{restaurantTypes.map((type) => <option key={type} value={type}>{type.replace(/([a-z])([A-Z])/g, "$1 $2")}</option>)}</select>{errorFor("restaurantType")}</label>
+          <p id="restaurant-type-help">Search engines use the most specific type. Choose a cafe, bakery, or bar over the generic restaurant when it fits.</p>
+          <label>Price range<select {...fieldA11y("priceRange")} value={profile.priceRange} onChange={(e) => setProfile({ ...profile, priceRange: e.target.value })}><option value="">Not specified</option>{priceRanges.map((range) => <option key={range} value={range}>{range}</option>)}</select>{errorFor("priceRange")}</label>
           <label>Address line 1<input required autoComplete="address-line1" {...fieldA11y("address.line1")} value={profile.address.line1} onChange={(e) => setProfile({ ...profile, address: { ...profile.address, line1: e.target.value } })} />{errorFor("address.line1")}</label>
           <label>Address line 2<input autoComplete="address-line2" {...fieldA11y("address.line2")} value={profile.address.line2 ?? ""} onChange={(e) => setProfile({ ...profile, address: { ...profile.address, line2: e.target.value } })} />{errorFor("address.line2")}</label>
           <label>City<input required autoComplete="address-level2" {...fieldA11y("address.city")} value={profile.address.city} onChange={(e) => setProfile({ ...profile, address: { ...profile.address, city: e.target.value } })} />{errorFor("address.city")}</label>
@@ -328,6 +407,24 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
         <div className={styles.inlineForm}><label>Upload image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} /></label><label>Upload alt text<input maxLength={200} value={mediaAltText} onChange={(e) => setMediaAltText(e.target.value)} /></label></div>
         <button className={styles.secondaryButton} type="button" disabled={!uploadFile || !mediaAltText.trim() || busy !== null} onClick={() => void uploadSelectedMedia()}>Upload image</button>
       </section>
+
+      <ImageSlot
+        title="Logo"
+        endpoint="/api/v1/admin/restaurant/logo"
+        current={restaurant.logo}
+        assets={mediaAssets}
+        busy={busy}
+        onSave={save}
+      />
+
+      <ImageSlot
+        title="Cover image"
+        endpoint="/api/v1/admin/restaurant/cover-image"
+        current={restaurant.coverImage}
+        assets={mediaAssets}
+        busy={busy}
+        onSave={save}
+      />
 
       <PublicationPanel status={restaurant.publicationStatus} />
     </main>
