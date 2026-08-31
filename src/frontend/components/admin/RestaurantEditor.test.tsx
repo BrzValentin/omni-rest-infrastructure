@@ -21,6 +21,7 @@ const initial: AdminRestaurant = {
   address: { line1: "1 Main", line2: null, city: "Winnipeg", region: "MB", postalCode: "R3C 1A1", countryCode: "CA", latitude: null, longitude: null },
   regularHours: [{ dayOfWeek: 1, intervals: [{ opensAt: "09:00:00", closesAt: "17:00:00", closesNextDay: false }] }],
   specialHours: [{ id: "special", date: "2026-12-25", isClosed: true, note: "Holiday", intervals: [] }],
+  restaurantType: "Restaurant", priceRange: "$$", logo: null, coverImage: null,
   socialLinks: [{ platform: "instagram", url: "https://instagram.com/example" }],
   mainImage: { id: "33333333-3333-3333-3333-333333333333", altText: "Dining room", processingStatus: "ready", variants: [{ url: "https://images.example.test/main.webp", width: 800, height: 600 }] },
   draftDesignId: "legacy-current-v1", publishedDesignId: "legacy-current-v1",
@@ -106,7 +107,10 @@ describe("RestaurantEditor", () => {
     await user.click(screen.getByRole("button", { name: "Retry publication" }));
     expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/publication-status/operation/retry", "POST", {});
     expect((await axe.run(container, { rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
-  });
+    // This test drives every section of a large form and finishes with a full axe run. It sits
+    // near the default timeout on its own and exceeds it under coverage instrumentation, so the
+    // budget is stated explicitly rather than left to chance.
+  }, 30_000);
 
   it("preserves entries and offers an explicit reload after an ETag conflict", async () => {
     const user = userEvent.setup();

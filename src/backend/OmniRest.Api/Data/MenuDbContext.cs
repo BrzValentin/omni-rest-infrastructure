@@ -45,6 +45,7 @@ public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> option
         ConfigurePublication(modelBuilder.Entity<PublicationEntity>());
         ConfigurePhase3(modelBuilder);
         ConfigurePhase5(modelBuilder);
+        ConfigurePhase6(modelBuilder);
     }
 
     private static void ConfigureRestaurant(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<RestaurantEntity> entity)
@@ -267,6 +268,14 @@ public sealed class RestaurantEntity
     public string? PhoneDisplay { get; set; }
     public string? Email { get; set; }
     public Guid? MainMediaAssetId { get; set; }
+
+    /// <summary>Schema.org FoodEstablishment subtype; see <see cref="RestaurantTypes"/>.</summary>
+    public string? RestaurantType { get; set; }
+
+    /// <summary>Schema.org price band; see <see cref="PriceRanges"/>.</summary>
+    public string? PriceRange { get; set; }
+    public Guid? LogoMediaAssetId { get; set; }
+    public Guid? CoverMediaAssetId { get; set; }
     public long DraftVersion { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -274,6 +283,8 @@ public sealed class RestaurantEntity
     public RestaurantSettingsEntity Settings { get; set; } = null!;
     public RestaurantAddressEntity? Address { get; set; }
     public MediaAssetEntity? MainMediaAsset { get; set; }
+    public MediaAssetEntity? LogoMediaAsset { get; set; }
+    public MediaAssetEntity? CoverMediaAsset { get; set; }
     public ICollection<RestaurantDomainEntity> Domains { get; } = [];
     public ICollection<MenuEntity> Menus { get; } = [];
     public ICollection<PublicationEntity> Publications { get; } = [];

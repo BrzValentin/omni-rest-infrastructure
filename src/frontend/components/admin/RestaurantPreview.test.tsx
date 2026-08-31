@@ -10,13 +10,14 @@ vi.mock("next/image", () => ({ default: (props: Record<string, unknown>) => Reac
 const fixture: PublicRestaurant = {
   id: "restaurant", name: "Prairie Table", shortDescription: "Seasonal", email: "hello@example.test", timeZone: "America/Winnipeg",
   phone: { e164: "+12045550123", display: "(204) 555-0123" },
-  address: { streetLine1: "1 Main", streetLine2: null, city: "Winnipeg", region: "MB", postalCode: "R3C 1A1", countryCode: "CA", formatted: "1 Main, Winnipeg", directionsUrl: "https://maps.example.test" },
+  address: { streetLine1: "1 Main", streetLine2: null, city: "Winnipeg", region: "MB", postalCode: "R3C 1A1", countryCode: "CA", formatted: "1 Main, Winnipeg", directionsUrl: "https://maps.example.test", latitude: null, longitude: null },
   regularHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, intervals: dayOfWeek ? [{ opensAt: "09:00:00", closesAt: "17:00:00", closesNextDay: false }] : [] })),
   specialHours: [{ date: "2026-12-25", isClosed: true, note: "Holiday", intervals: [] }],
   status: { state: "open", label: "Open", nextChangeAt: null, source: "regularHours" },
   socialLinks: [{ platform: "instagram", url: "https://instagram.com/example" }],
   mainImage: { altText: "Dining room", variants: [{ url: "https://images.example.test/main.webp", width: 800, height: 600 }] },
   gallery: [],
+  restaurantType: null, priceRange: null, logo: null, coverImage: null, publishedAt: null,
   publicationVersion: "3", websiteDesignId: "legacy-current-v1",
 };
 

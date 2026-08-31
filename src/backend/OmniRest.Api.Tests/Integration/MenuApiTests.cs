@@ -348,6 +348,57 @@ public sealed class MenuApiTests(PostgresFixture postgres)
             payloadBytes, p95, durations.Count);
     }
 
+    /// <summary>
+    /// <c>publishedAt</c> feeds the sitemap's <c>lastmod</c>, so it must come from the publication ROW and
+    /// not from the serialized snapshot: the seeded snapshots predate the field entirely and still surface it.
+    /// </summary>
+    [Fact]
+    public async Task PublishedAtComesFromThePublicationRowAndIsNullBeforeFirstPublication()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        using var client = factory.CreateClient();
+
+        DateTimeOffset expected;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+            expected = await db.Publications.AsNoTracking()
+                .Where(item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId && item.IsCurrent)
+                .Select(item => item.PublishedAt)
+                .SingleAsync();
+
+            // The stored snapshot never carries the timestamp: it is absent on pre-Phase 6 snapshots and
+            // serialized as null on new ones, so a non-null read can only have come from the row.
+            var snapshot = await db.Publications.AsNoTracking()
+                .Where(item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId && item.IsCurrent)
+                .Select(item => item.SnapshotJson)
+                .SingleAsync();
+            using var parsed = JsonDocument.Parse(snapshot);
+            Assert.True(
+                !parsed.RootElement.TryGetProperty("publishedAt", out var stored) ||
+                stored.ValueKind == JsonValueKind.Null,
+                "The publication snapshot must not carry publishedAt.");
+        }
+
+        var published = await ReadForHostAsync(client, "menu.localhost");
+        Assert.Equal(expected, published.PublishedAt);
+        Assert.Equal(expected, published.Restaurant?.PublishedAt);
+
+        var restaurantRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/public/restaurant");
+        restaurantRequest.Headers.Host = "menu.localhost";
+        using var restaurantResponse = await client.SendAsync(restaurantRequest);
+        Assert.Equal(HttpStatusCode.OK, restaurantResponse.StatusCode);
+        var restaurant = await restaurantResponse.Content
+            .ReadFromJsonAsync<OmniRest.Api.Restaurants.PublicRestaurantResponse>();
+        Assert.Equal(expected, restaurant?.PublishedAt);
+
+        var unpublished = await ReadForHostAsync(client, "no-menu.localhost");
+        Assert.Equal("0", unpublished.PublicationVersion);
+        Assert.Null(unpublished.PublishedAt);
+        Assert.Null(unpublished.Restaurant);
+    }
+
     private static async Task<HttpResponseMessage> SendForHostAsync(HttpClient client, string host)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/public/menu");

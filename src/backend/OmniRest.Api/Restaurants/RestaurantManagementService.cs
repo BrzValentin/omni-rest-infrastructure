@@ -29,6 +29,8 @@ public interface IRestaurantManagementService
     Task<ManagementResult<AdminMutationResponse>> DeleteSpecialHoursAsync(OwnerRestaurantAccess access, Guid id, string? etag, CancellationToken cancellationToken);
     Task<ManagementResult<AdminMutationResponse>> ReplaceSocialLinksAsync(OwnerRestaurantAccess access, string? etag, UpdateSocialLinksRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<AdminMutationResponse>> SelectMainImageAsync(OwnerRestaurantAccess access, string? etag, SelectMainImageRequest request, CancellationToken cancellationToken);
+    Task<ManagementResult<AdminMutationResponse>> SelectLogoAsync(OwnerRestaurantAccess access, string? etag, SelectLogoRequest request, CancellationToken cancellationToken);
+    Task<ManagementResult<AdminMutationResponse>> SelectCoverImageAsync(OwnerRestaurantAccess access, string? etag, SelectCoverImageRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<AdminMutationResponse>> UpdateMediaAltTextAsync(OwnerRestaurantAccess access, Guid id, string? etag, UpdateMediaAltTextRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<AdminMutationResponse>> UpdateWebsiteDesignAsync(OwnerRestaurantAccess access, string? etag, UpdateWebsiteDesignRequest request, CancellationToken cancellationToken);
     Task<ManagementResult<PublicRestaurantResponse>> PreviewAsync(OwnerRestaurantAccess access, CancellationToken cancellationToken);
@@ -68,6 +70,8 @@ public sealed partial class RestaurantManagementService(
         restaurant.PhoneE164 = request.PhoneE164;
         restaurant.PhoneDisplay = request.PhoneDisplay?.Trim();
         restaurant.Email = request.Email?.Trim();
+        restaurant.RestaurantType = string.IsNullOrEmpty(request.RestaurantType) ? null : request.RestaurantType;
+        restaurant.PriceRange = string.IsNullOrEmpty(request.PriceRange) ? null : request.PriceRange;
         restaurant.Settings.TimeZoneId = request.TimeZone;
         if (restaurant.Address is null)
         {
@@ -198,20 +202,59 @@ public sealed partial class RestaurantManagementService(
         OwnerRestaurantAccess access,
         string? etag,
         SelectMainImageRequest request,
+        CancellationToken cancellationToken) => SelectRestaurantImageAsync(
+            access, etag, request.MediaAssetId, "restaurant.main_image", (restaurant, media) =>
+            {
+                restaurant.MainMediaAssetId = media?.Id;
+                restaurant.MainMediaAsset = media;
+            }, cancellationToken);
+
+    public Task<ManagementResult<AdminMutationResponse>> SelectLogoAsync(
+        OwnerRestaurantAccess access,
+        string? etag,
+        SelectLogoRequest request,
+        CancellationToken cancellationToken) => SelectRestaurantImageAsync(
+            access, etag, request.MediaAssetId, "restaurant.logo", (restaurant, media) =>
+            {
+                restaurant.LogoMediaAssetId = media?.Id;
+                restaurant.LogoMediaAsset = media;
+            }, cancellationToken);
+
+    public Task<ManagementResult<AdminMutationResponse>> SelectCoverImageAsync(
+        OwnerRestaurantAccess access,
+        string? etag,
+        SelectCoverImageRequest request,
+        CancellationToken cancellationToken) => SelectRestaurantImageAsync(
+            access, etag, request.MediaAssetId, "restaurant.cover_image", (restaurant, media) =>
+            {
+                restaurant.CoverMediaAssetId = media?.Id;
+                restaurant.CoverMediaAsset = media;
+            }, cancellationToken);
+
+    /// <summary>
+    /// Points one restaurant-level image slot at a media asset, or clears it when
+    /// <paramref name="mediaAssetId"/> is null. The lookup is scoped to the caller's restaurant, so another
+    /// tenant's asset is indistinguishable from a missing one and yields 404 rather than leaking existence.
+    /// </summary>
+    private Task<ManagementResult<AdminMutationResponse>> SelectRestaurantImageAsync(
+        OwnerRestaurantAccess access,
+        string? etag,
+        Guid? mediaAssetId,
+        string auditActionPrefix,
+        Action<RestaurantEntity, MediaAssetEntity?> assign,
         CancellationToken cancellationToken) => MutateAsync(
             access,
             etag,
-            request.MediaAssetId is null ? "restaurant.main_image.removed" : "restaurant.main_image.selected",
+            mediaAssetId is null ? $"{auditActionPrefix}.removed" : $"{auditActionPrefix}.selected",
             async (restaurant, token) =>
     {
-        if (request.MediaAssetId is null)
+        if (mediaAssetId is null)
         {
-            restaurant.MainMediaAssetId = null;
-            restaurant.MainMediaAsset = null;
+            assign(restaurant, null);
             return null;
         }
         var media = await dbContext.MediaAssets.Include(item => item.Variants).SingleOrDefaultAsync(
-            item => item.Id == request.MediaAssetId && item.RestaurantId == restaurant.Id, token);
+            item => item.Id == mediaAssetId && item.RestaurantId == restaurant.Id, token);
         if (media is null)
         {
             return NotFound();
@@ -220,8 +263,7 @@ public sealed partial class RestaurantManagementService(
         {
             return new ManagementFailure(409, "media_not_ready", "The selected image is not ready for publication");
         }
-        restaurant.MainMediaAssetId = media.Id;
-        restaurant.MainMediaAsset = media;
+        assign(restaurant, media);
         return null;
     }, cancellationToken);
 
@@ -483,6 +525,8 @@ public sealed partial class RestaurantManagementService(
             .Include(item => item.SpecialHours).ThenInclude(item => item.Intervals)
             .Include(item => item.SocialLinks)
             .Include(item => item.MainMediaAsset).ThenInclude(item => item!.Variants)
+            .Include(item => item.LogoMediaAsset).ThenInclude(item => item!.Variants)
+            .Include(item => item.CoverMediaAsset).ThenInclude(item => item!.Variants)
             .Include(item => item.GalleryImages).ThenInclude(item => item.MediaAsset).ThenInclude(item => item.Variants)
             .Include(item => item.Menus).ThenInclude(item => item.Categories).ThenInclude(item => item.Dishes).ThenInclude(item => item.Badges).ThenInclude(item => item.Badge)
             .Include(item => item.Menus).ThenInclude(item => item.Categories).ThenInclude(item => item.Dishes).ThenInclude(item => item.MediaAsset).ThenInclude(item => item!.Variants)
@@ -523,17 +567,25 @@ public sealed partial class RestaurantManagementService(
                 item.Intervals.OrderBy(interval => interval.DisplayOrder).Select(ToAdminInterval).ToArray())).ToArray(),
             restaurant.SocialLinks.OrderBy(item => item.Platform, StringComparer.Ordinal)
                 .Select(item => new AdminSocialLinkResponse(item.Platform, item.Url)).ToArray(),
-            restaurant.MainMediaAsset is null ? null : new AdminMainImageResponse(
-                restaurant.MainMediaAsset.Id.ToString(), restaurant.MainMediaAsset.AltText, restaurant.MainMediaAsset.ProcessingStatus,
-                restaurant.MainMediaAsset.Variants.OrderBy(item => item.Width).ThenBy(item => item.Height)
-                    .Select(item => new PublicMediaVariant(item.Url, item.Width, item.Height)).ToArray()),
+            ToAdminImage(restaurant.MainMediaAsset),
             draftDesignId,
             publishedDesignId,
             WebsiteDesignCatalog.All.Select(design => new AdminWebsiteDesignResponse(
                 design.Id, design.Name, design.ContractVersion, design.Availability)).ToArray(),
             restaurant.DraftVersion.ToString(CultureInfo.InvariantCulture), DraftETag.Create(restaurant.Id, restaurant.DraftVersion),
-            latest is null ? null : ToPublicationStatus(latest));
+            latest is null ? null : ToPublicationStatus(latest),
+            restaurant.RestaurantType,
+            restaurant.PriceRange,
+            ToAdminImage(restaurant.LogoMediaAsset),
+            ToAdminImage(restaurant.CoverMediaAsset));
     }
+
+    private static AdminMainImageResponse? ToAdminImage(MediaAssetEntity? asset) => asset is null ? null : new(
+        asset.Id.ToString(),
+        asset.AltText,
+        asset.ProcessingStatus,
+        asset.Variants.OrderBy(item => item.Width).ThenBy(item => item.Height)
+            .Select(item => new PublicMediaVariant(item.Url, item.Width, item.Height)).ToArray());
 
     private async Task<string> ReadPublishedDesignIdAsync(Guid restaurantId, CancellationToken cancellationToken)
     {

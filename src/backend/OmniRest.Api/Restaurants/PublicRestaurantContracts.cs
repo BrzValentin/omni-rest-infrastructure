@@ -59,7 +59,21 @@ public sealed record PublicRestaurantResponse(
     PublicMedia? MainImage,
     string PublicationVersion,
     IReadOnlyList<PublicGalleryImage> Gallery,
-    string? WebsiteDesignId = null);
+    string? WebsiteDesignId = null,
+
+    /// <summary>Schema.org FoodEstablishment subtype used verbatim as the JSON-LD <c>@type</c>.</summary>
+    string? RestaurantType = null,
+
+    /// <summary>Schema.org <c>priceRange</c> band, one of <c>$</c> through <c>$$$$</c>.</summary>
+    string? PriceRange = null,
+    PublicMedia? Logo = null,
+    PublicMedia? CoverImage = null,
+
+    /// <summary>
+    /// When the current publication row was written; supplied by <c>PublicMenuReader</c> from
+    /// <c>publications.published_at</c> rather than from the snapshot. Null before first publication.
+    /// </summary>
+    DateTimeOffset? PublishedAt = null);
 
 public sealed class RestaurantPublicProjectionBuilder(
     TimeProvider timeProvider,
@@ -85,19 +99,9 @@ public sealed class RestaurantPublicProjectionBuilder(
                     .Select(ToPublicInterval).ToArray()))
             .ToArray();
 
-        PublicMedia? mainImage = null;
-        if (restaurant.MainMediaAsset is { ProcessingStatus: "ready" } asset)
-        {
-            if (asset.Variants.Any(item => item.RestaurantId != restaurant.Id || item.MediaAssetId != asset.Id ||
-                item.Width <= 0 || item.Height <= 0 || !MenuValidation.IsSafeMediaUrl(item.Url, options.Value.AllowedMediaHosts)))
-            {
-                throw new InvalidOperationException("Main image variants are invalid for public projection.");
-            }
-            mainImage = new PublicMedia(
-                asset.AltText,
-                asset.Variants.OrderBy(item => item.Width).ThenBy(item => item.Height).ThenBy(item => item.Id)
-                    .Select(item => new PublicMediaVariant(item.Url, item.Width, item.Height)).ToArray());
-        }
+        var mainImage = BuildRestaurantMedia(restaurant.Id, restaurant.MainMediaAsset, "Main image");
+        var logo = BuildRestaurantMedia(restaurant.Id, restaurant.LogoMediaAsset, "Logo");
+        var coverImage = BuildRestaurantMedia(restaurant.Id, restaurant.CoverMediaAsset, "Cover image");
 
         var gallery = restaurant.GalleryImages
             .Where(item => item.IsActive)
@@ -126,8 +130,37 @@ public sealed class RestaurantPublicProjectionBuilder(
             mainImage,
             version.ToString(CultureInfo.InvariantCulture),
             gallery,
-            websiteDesignId);
+            websiteDesignId,
+            restaurant.RestaurantType,
+            restaurant.PriceRange,
+            logo,
+            coverImage);
         return response with { Status = statusCalculator.Calculate(response, timeProvider.GetUtcNow()) };
+    }
+
+    /// <summary>
+    /// Projects one restaurant-level image slot (main, logo, or cover), or <c>null</c> when the slot is
+    /// empty or its asset is not publishable. An asset that is not ready is skipped rather than published
+    /// with a URL that would 404; a variant that fails the allow-list is a data defect and throws.
+    /// </summary>
+    private PublicMedia? BuildRestaurantMedia(Guid restaurantId, MediaAssetEntity? asset, string slotName)
+    {
+        if (asset is not { ProcessingStatus: "ready" })
+        {
+            return null;
+        }
+
+        if (asset.Variants.Any(item => item.RestaurantId != restaurantId || item.MediaAssetId != asset.Id ||
+            item.Width <= 0 || item.Height <= 0 ||
+            !MenuValidation.IsSafeMediaUrl(item.Url, options.Value.AllowedMediaHosts)))
+        {
+            throw new InvalidOperationException($"{slotName} variants are invalid for public projection.");
+        }
+
+        return new PublicMedia(
+            asset.AltText,
+            asset.Variants.OrderBy(item => item.Width).ThenBy(item => item.Height).ThenBy(item => item.Id)
+                .Select(item => new PublicMediaVariant(item.Url, item.Width, item.Height)).ToArray());
     }
 
     /// <summary>
