@@ -37,11 +37,13 @@ public interface IRestaurantManagementService
     Task<ManagementResult<PublicationStatusResponse>> RetryPublicationAsync(OwnerRestaurantAccess access, Guid operationId, CancellationToken cancellationToken);
 }
 
-public sealed class RestaurantManagementService(
+public sealed partial class RestaurantManagementService(
     MenuDbContext dbContext,
     PublicMenuProjectionBuilder projectionBuilder,
     PublicMenuSnapshotSerializer serializer,
     IInProcessPublicationDispatcher dispatcher,
+    ILocalMediaStorage mediaStorage,
+    IGalleryThumbnailFactory thumbnailFactory,
     TimeProvider timeProvider,
     ILogger<RestaurantManagementService> logger) : IRestaurantManagementService
 {
@@ -370,14 +372,35 @@ public sealed class RestaurantManagementService(
         Func<RestaurantEntity, CancellationToken, Task<ManagementFailure?>> apply,
         CancellationToken cancellationToken)
     {
+        var outcome = await MutateCoreAsync(access, etag, action, apply, cancellationToken);
+        return outcome.Value is null
+            ? ManagementResult<AdminMutationResponse>.Failed(outcome.Failure!)
+            : ManagementResult<AdminMutationResponse>.Success(new AdminMutationResponse(
+                await ToAdminAsync(outcome.Value.Restaurant, cancellationToken), outcome.Value.Publication));
+    }
+
+    /// <param name="onCommitted">
+    /// Invoked once the mutation transaction has committed, before the post-commit dispatch and reload run.
+    /// Callers that compensate side effects (a stored blob, for example) use it to tell a pre-commit failure
+    /// apart from a post-commit one: work after the commit can still throw, and the committed rows stay.
+    /// </param>
+    private async Task<ManagementResult<MutationOutcome>> MutateCoreAsync(
+        OwnerRestaurantAccess access,
+        string? etag,
+        string action,
+        Func<RestaurantEntity, CancellationToken, Task<ManagementFailure?>> apply,
+        CancellationToken cancellationToken,
+        MutationAudit? audit = null,
+        Action? onCommitted = null)
+    {
         var restaurant = await LoadAggregateAsync(access.RestaurantId, tracking: true, cancellationToken);
         if (restaurant is null)
         {
-            return ManagementResult<AdminMutationResponse>.Failed(NotFound());
+            return ManagementResult<MutationOutcome>.Failed(NotFound());
         }
         if (!DraftETag.Matches(etag, restaurant.Id, restaurant.DraftVersion))
         {
-            return ManagementResult<AdminMutationResponse>.Failed(
+            return ManagementResult<MutationOutcome>.Failed(
                 new ManagementFailure(409, "concurrency_conflict", "The draft changed; reload before saving", restaurant.DraftVersion));
         }
 
@@ -386,7 +409,7 @@ public sealed class RestaurantManagementService(
         if (failure is not null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return ManagementResult<AdminMutationResponse>.Failed(failure);
+            return ManagementResult<MutationOutcome>.Failed(failure);
         }
 
         var now = timeProvider.GetUtcNow();
@@ -414,7 +437,8 @@ public sealed class RestaurantManagementService(
             RestaurantId = restaurant.Id,
             ActorUserId = access.UserId,
             Action = action,
-            EntityType = "restaurant",
+            EntityType = audit?.EntityType ?? "restaurant",
+            EntityId = audit?.EntityId,
             EntityVersion = restaurant.DraftVersion.ToString(CultureInfo.InvariantCulture),
             OperationId = operationId,
             OccurredAt = now
@@ -429,22 +453,25 @@ public sealed class RestaurantManagementService(
             logger.LogWarning("Restaurant mutation encountered a concurrency conflict for entity states {EntityStates}.",
                 string.Join(',', exception.Entries.Select(entry => $"{entry.Metadata.ClrType.Name}:{entry.State}")));
             await transaction.RollbackAsync(cancellationToken);
-            return ManagementResult<AdminMutationResponse>.Failed(
+            return ManagementResult<MutationOutcome>.Failed(
                 new ManagementFailure(409, "concurrency_conflict", "The draft changed; reload before saving"));
         }
         catch (DbUpdateException)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return ManagementResult<AdminMutationResponse>.Failed(
+            return ManagementResult<MutationOutcome>.Failed(
                 new ManagementFailure(409, "data_conflict", "The requested change conflicts with existing restaurant data"));
         }
+
+        // The transaction is committed from here on: everything below can still fail, but the rows stay.
+        onCommitted?.Invoke();
 
         await dispatcher.DispatchAsync(operationId, cancellationToken);
         dbContext.ChangeTracker.Clear();
         var saved = await LoadAggregateAsync(access.RestaurantId, tracking: false, cancellationToken);
         var status = await dbContext.PublicationOutbox.AsNoTracking().SingleAsync(item => item.OperationId == operationId, cancellationToken);
-        return ManagementResult<AdminMutationResponse>.Success(
-            new AdminMutationResponse(await ToAdminAsync(saved!, cancellationToken), ToPublicationStatus(status)));
+        return ManagementResult<MutationOutcome>.Success(
+            new MutationOutcome(saved!, ToPublicationStatus(status)));
     }
 
     private Task<RestaurantEntity?> LoadAggregateAsync(Guid restaurantId, bool tracking, CancellationToken cancellationToken)
@@ -456,6 +483,7 @@ public sealed class RestaurantManagementService(
             .Include(item => item.SpecialHours).ThenInclude(item => item.Intervals)
             .Include(item => item.SocialLinks)
             .Include(item => item.MainMediaAsset).ThenInclude(item => item!.Variants)
+            .Include(item => item.GalleryImages).ThenInclude(item => item.MediaAsset).ThenInclude(item => item.Variants)
             .Include(item => item.Menus).ThenInclude(item => item.Categories).ThenInclude(item => item.Dishes).ThenInclude(item => item.Badges).ThenInclude(item => item.Badge)
             .Include(item => item.Menus).ThenInclude(item => item.Categories).ThenInclude(item => item.Dishes).ThenInclude(item => item.MediaAsset).ThenInclude(item => item!.Variants)
             .AsSplitQuery()

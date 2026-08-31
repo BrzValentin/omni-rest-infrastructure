@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,43 +39,47 @@ describe("RestaurantEditor", () => {
   beforeEach(() => { mocks.mutate.mockReset().mockResolvedValue(mutation); mocks.browserGet.mockReset(); });
 
   it("edits and saves each restaurant section while preserving accessible structure", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const { container } = render(<RestaurantEditor initial={initial} initialMedia={[initial.mainImage!]} />);
+
+    // `userEvent.type` dispatches one event per character, which under jsdom dominates the
+    // runtime of this test (13 fields) and pushed it past the default 5s timeout. None of the
+    // assertions below depend on per-keystroke behaviour — these are plain controlled inputs,
+    // and the E.164 check runs on submit — so set values directly and keep userEvent for the
+    // interactions this test is actually about: clicks, selection, focus, and the dialog
+    // (with `delay: null`, since nothing here depends on inter-event timing).
+    const setValue = (field: HTMLElement, value: string) => { fireEvent.change(field, { target: { value } }); };
 
     for (const [label, value] of [
       ["Name", "New Prairie Table"], ["Description", "Updated seasonal"], ["Phone display", "204-555-0123"],
       ["Email", "new@example.test"], ["Time zone", "America/Regina"], ["Address line 1", "2 Main"],
       ["Address line 2", "Suite 1"], ["City", "Brandon"], ["Province or state", "SK"], ["Postal code", "R7A 0A1"], ["Country code", "US"],
     ]) {
-      const field = screen.getByLabelText(label);
-      await user.clear(field);
-      await user.type(field, value);
+      setValue(screen.getByLabelText(label), value);
     }
-    await user.clear(screen.getByLabelText("Phone (E.164)"));
-    await user.type(screen.getByLabelText("Phone (E.164)"), "2045550123");
+    setValue(screen.getByLabelText("Phone (E.164)"), "2045550123");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
     expect(screen.getByText(/Phone must be E\.164/)).toBeVisible();
-    await user.clear(screen.getByLabelText("Phone (E.164)"));
-    await user.type(screen.getByLabelText("Phone (E.164)"), "+12045550123");
+    setValue(screen.getByLabelText("Phone (E.164)"), "+12045550123");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/profile", "PUT", expect.any(Object), '"draft-3"'));
 
     await user.click(screen.getByRole("button", { name: "Copy Monday to weekdays" }));
     await user.click(screen.getAllByRole("button", { name: "Add period" })[0]);
     const sunday = screen.getByRole("group", { name: "Sunday" });
-    await user.clear(within(sunday).getByLabelText("Opens")); await user.type(within(sunday).getByLabelText("Opens"), "18:00");
-    await user.clear(within(sunday).getByLabelText("Closes")); await user.type(within(sunday).getByLabelText("Closes"), "02:00");
+    setValue(within(sunday).getByLabelText("Opens"), "18:00");
+    setValue(within(sunday).getByLabelText("Closes"), "02:00");
     await user.click(within(sunday).getByRole("button", { name: "Remove Sunday period 1" }));
     await user.click(screen.getByRole("button", { name: "Save regular hours" }));
     expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/regular-hours", "PUT", expect.any(Object), '"draft-3"');
 
-    await user.type(screen.getByLabelText("Date"), "2026-12-31");
+    setValue(screen.getByLabelText("Date"), "2026-12-31");
     const specialSection = screen.getByRole("heading", { name: "Special hours" }).parentElement!;
     await user.click(within(specialSection).getByLabelText("Closed all day"));
     await user.click(within(specialSection).getByLabelText("Closed all day"));
-    await user.clear(within(specialSection).getByLabelText("Opens")); await user.type(within(specialSection).getByLabelText("Opens"), "20:00");
-    await user.clear(within(specialSection).getByLabelText("Closes")); await user.type(within(specialSection).getByLabelText("Closes"), "01:00");
-    await user.type(within(specialSection).getByLabelText("Note"), "New Year");
+    setValue(within(specialSection).getByLabelText("Opens"), "20:00");
+    setValue(within(specialSection).getByLabelText("Closes"), "01:00");
+    setValue(within(specialSection).getByLabelText("Note"), "New Year");
     await user.click(screen.getByRole("button", { name: "Add special date" }));
     expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/special-hours", "POST", expect.any(Object), '"draft-3"');
     await user.click(screen.getByRole("button", { name: "Delete special hours for 2026-12-25" }));
@@ -87,8 +91,8 @@ describe("RestaurantEditor", () => {
     expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/special-hours/special", "DELETE", {}, '"draft-3"');
 
     const socialSection = screen.getByRole("heading", { name: "Social links" }).parentElement!;
-    await user.clear(within(socialSection).getByLabelText("Platform")); await user.type(within(socialSection).getByLabelText("Platform"), "facebook");
-    await user.clear(within(socialSection).getByLabelText("URL")); await user.type(within(socialSection).getByLabelText("URL"), "https://facebook.com/example");
+    setValue(within(socialSection).getByLabelText("Platform"), "facebook");
+    setValue(within(socialSection).getByLabelText("URL"), "https://facebook.com/example");
     await user.click(within(socialSection).getByRole("button", { name: "Remove" }));
     await user.click(screen.getByRole("button", { name: "Add link" }));
     await user.click(screen.getByRole("button", { name: "Save social links" }));

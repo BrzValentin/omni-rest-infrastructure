@@ -63,3 +63,29 @@
 @media (max-width: 68rem) { .nightfall-v1__dishGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 48rem) { .nightfall-v1__hero::after { background: linear-gradient(0deg, rgb(14 15 13 / 96%), rgb(14 15 13 / 25%)); } .nightfall-v1__detailsGrid, .nightfall-v1__dishGrid { grid-template-columns: 1fr; } .nightfall-v1__menuHero { min-height: 20rem; } .nightfall-v1__hero h1, .nightfall-v1__menuHero h1 { font-size: clamp(3.3rem, 18vw, 6rem); } }
 @media (forced-colors: active) { .nightfall-v1__primaryAction, .nightfall-v1__categoryLink[data-selected="true"] { border: 2px solid ButtonText; } }
+.nightfall-v1__gallerySection { padding-block: clamp(3.5rem, 8vw, 8rem); border-top: 1px solid #514828; }
+.nightfall-v1__galleryHeading { margin: 0 0 2.25rem; color: #c9a227; font: 700 .78rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .28em; text-transform: uppercase; }
+.nightfall-v1__galleryGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.nightfall-v1__galleryItem { min-width: 0; }
+.nightfall-v1__galleryThumbButton { display: block; width: 100%; padding: 0; border: 1px solid #514828; background: #16170f; cursor: pointer; }
+.nightfall-v1__galleryThumbButton:disabled { cursor: default; }
+.nightfall-v1__galleryFrame { position: relative; display: block; aspect-ratio: 3 / 2; overflow: hidden; }
+.nightfall-v1__galleryImage { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: brightness(.88) saturate(.85); transition: filter .25s ease; }
+.nightfall-v1__galleryThumbButton:hover .nightfall-v1__galleryImage { filter: brightness(1) saturate(1); }
+.nightfall-v1__gallerySkeleton { position: absolute; inset: 0; background: linear-gradient(115deg, #1d1e16 40%, #34362a 50%, #1d1e16 60%) 0 0 / 320% 100%; animation: nightfall-v1__gallerySkeletonGlow 2.4s linear infinite; }
+@keyframes nightfall-v1__gallerySkeletonGlow { from { background-position: 180% 0; } to { background-position: -80% 0; } }
+.nightfall-v1__galleryFallback { position: absolute; inset: 0; display: grid; place-items: center; background: #1d1e16; color: #c9a227; font-size: 2.2rem; }
+.nightfall-v1__galleryEmpty { margin: 0; color: #cbc6b6; font: 1rem/1.7 ui-sans-serif, system-ui, sans-serif; }
+.nightfall-v1__lightboxBackdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(6 7 5 / 92%); }
+.nightfall-v1__lightbox { display: grid; width: min(100%, 68rem); max-height: 100%; gap: 1.1rem; padding: 1.5rem; border: 1px solid #c9a227; background: #0e0f0d; color: #f2efe6; overflow: auto; }
+.nightfall-v1__lightboxFigure { position: relative; display: grid; margin: 0; gap: .9rem; }
+.nightfall-v1__lightboxImage { width: 100%; height: auto; max-height: 64vh; object-fit: contain; }
+.nightfall-v1__lightboxCaption { color: #cbc6b6; font: italic 1.05rem/1.6 Georgia, "Times New Roman", serif; }
+.nightfall-v1__lightboxCounter { margin: 0; color: #c9a227; font: 700 .72rem/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: .28em; text-transform: uppercase; }
+.nightfall-v1__lightboxNav { display: flex; flex-wrap: wrap; gap: .5rem; }
+.nightfall-v1__lightboxNavButton, .nightfall-v1__lightboxClose { min-height: 2.75rem; padding: .7rem 1.2rem; border: 1px solid #c9a227; background: transparent; color: #f2efe6; font: 700 .78rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; cursor: pointer; }
+.nightfall-v1__lightboxClose { justify-self: end; background: #c9a227; color: #0e0f0d; }
+.nightfall-v1__lightboxNavButton:disabled { opacity: .4; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .nightfall-v1__galleryImage { transition: none; } .nightfall-v1__gallerySkeleton { background: #1d1e16; animation: none; } }
+@media (max-width: 48rem) { .nightfall-v1__galleryGrid { grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); } }
+@media (forced-colors: active) { .nightfall-v1__galleryThumbButton, .nightfall-v1__lightboxNavButton { border: 2px solid ButtonText; } }

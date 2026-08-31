@@ -170,6 +170,10 @@ namespace OmniRest.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("actor_user_id");
 
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
                     b.Property<string>("EntityType")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -363,6 +367,71 @@ namespace OmniRest.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("OmniRest.Api.Data.GalleryImageEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("caption");
+
+                    b.Property<long>("ConcurrencyVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
+                        .HasColumnName("concurrency_version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_order");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("MediaAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("media_asset_id");
+
+                    b.Property<Guid>("RestaurantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("restaurant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MediaAssetId", "RestaurantId");
+
+                    b.HasIndex("RestaurantId", "DisplayOrder")
+                        .IsUnique();
+
+                    b.HasIndex("RestaurantId", "MediaAssetId")
+                        .IsUnique();
+
+                    b.HasIndex("RestaurantId", "IsActive", "DisplayOrder");
+
+                    b.ToTable("restaurant_gallery_images", "public", t =>
+                        {
+                            t.HasCheckConstraint("ck_restaurant_gallery_images_caption", "caption IS NULL OR length(btrim(caption)) > 0");
+
+                            t.HasCheckConstraint("ck_restaurant_gallery_images_display_order", "display_order > 0");
+                        });
+                });
+
             modelBuilder.Entity("OmniRest.Api.Data.MediaAssetEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -422,6 +491,10 @@ namespace OmniRest.Api.Data.Migrations
                         .HasDefaultValue(1L)
                         .HasColumnName("concurrency_version");
 
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("file_size_bytes");
+
                     b.Property<int>("Height")
                         .HasColumnType("integer")
                         .HasColumnName("height");
@@ -433,6 +506,11 @@ namespace OmniRest.Api.Data.Migrations
                     b.Property<Guid>("RestaurantId")
                         .HasColumnType("uuid")
                         .HasColumnName("restaurant_id");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("storage_key");
 
                     b.Property<string>("Url")
                         .IsRequired()
@@ -1376,6 +1454,26 @@ namespace OmniRest.Api.Data.Migrations
                     b.Navigation("MediaAsset");
                 });
 
+            modelBuilder.Entity("OmniRest.Api.Data.GalleryImageEntity", b =>
+                {
+                    b.HasOne("OmniRest.Api.Data.RestaurantEntity", "Restaurant")
+                        .WithMany("GalleryImages")
+                        .HasForeignKey("RestaurantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OmniRest.Api.Data.MediaAssetEntity", "MediaAsset")
+                        .WithMany()
+                        .HasForeignKey("MediaAssetId", "RestaurantId")
+                        .HasPrincipalKey("Id", "RestaurantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MediaAsset");
+
+                    b.Navigation("Restaurant");
+                });
+
             modelBuilder.Entity("OmniRest.Api.Data.MediaAssetEntity", b =>
                 {
                     b.HasOne("OmniRest.Api.Data.RestaurantEntity", "Restaurant")
@@ -1582,6 +1680,8 @@ namespace OmniRest.Api.Data.Migrations
                     b.Navigation("Address");
 
                     b.Navigation("Domains");
+
+                    b.Navigation("GalleryImages");
 
                     b.Navigation("Memberships");
 

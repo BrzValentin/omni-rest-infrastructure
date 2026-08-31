@@ -1,9 +1,10 @@
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ordinaryMenu, ordinaryRestaurant } from "@/test/fixtures";
+import type { PublicRestaurant } from "@/lib/restaurant-contract";
+import { galleryPhotos, ordinaryMenu, ordinaryRestaurant } from "@/test/fixtures";
 import BroadsheetHome from "./broadsheet/BroadsheetHome";
 import BroadsheetMenu from "./broadsheet/BroadsheetMenu";
 import LegacyHome from "./legacy/LegacyHome";
@@ -21,6 +22,8 @@ vi.mock("next/image", () => ({
     const priority = imageProps.priority === true;
     Reflect.deleteProperty(imageProps, "priority");
     Reflect.deleteProperty(imageProps, "sizes");
+    Reflect.deleteProperty(imageProps, "loader");
+    Reflect.deleteProperty(imageProps, "unoptimized");
     if (priority) imageProps.fetchPriority = "high";
     return React.createElement("img", imageProps);
   },
@@ -36,6 +39,20 @@ const allRenderers = [
   ...designs,
   { id: "legacy-current-v1", Home: LegacyHome, Menu: LegacyMenu },
 ] as const;
+const galleryHeadingIds: Record<string, string> = {
+  "quiet-elegance-v1": "quiet-gallery",
+  "nightfall-v1": "night-gallery",
+  "broadsheet-v1": "sheet-gallery",
+  "sunroom-v1": "sun-gallery",
+  "legacy-current-v1": "legacy-gallery",
+};
+
+/** An older publication snapshot predates the gallery field, so the property is missing rather than empty. */
+function snapshotWithoutGallery(): PublicRestaurant {
+  const restaurant = { ...ordinaryRestaurant };
+  Reflect.deleteProperty(restaurant, "gallery");
+  return restaurant as PublicRestaurant;
+}
 
 afterEach(() => cleanup());
 
@@ -108,6 +125,28 @@ describe("selectable website design renderers", () => {
   });
 
   for (const design of allRenderers) {
+    it(`${design.id} renders the gallery section only when the snapshot carries photos`, () => {
+      const withPhotos = render(<design.Home restaurant={ordinaryRestaurant} />);
+      expect(screen.getByRole("heading", { level: 2, name: "Gallery" }))
+        .toHaveAttribute("id", galleryHeadingIds[design.id]);
+      const grid = screen.getByRole("list", { name: `${ordinaryRestaurant.name} photos` });
+      expect(within(grid).getAllByRole("img").map((image) => image.getAttribute("src")))
+        .toEqual(galleryPhotos.map((photo) => photo.thumbnailUrl));
+      expect(within(grid).getByRole("button", { name: galleryPhotos[0].altText })).toBeVisible();
+      withPhotos.unmount();
+
+      const emptyGallery = render(<design.Home restaurant={{ ...ordinaryRestaurant, gallery: [] }} />);
+      expect(screen.queryByRole("heading", { level: 2, name: "Gallery" })).toBeNull();
+      expect(screen.queryByText("No photos available.")).toBeNull();
+      expect(screen.getByRole("heading", { level: 1, name: ordinaryRestaurant.name })).toBeVisible();
+      emptyGallery.unmount();
+
+      render(<design.Home restaurant={snapshotWithoutGallery()} />);
+      expect(screen.queryByRole("heading", { level: 2, name: "Gallery" })).toBeNull();
+      expect(screen.queryByText("No photos available.")).toBeNull();
+      expect(screen.getByRole("heading", { level: 1, name: ordinaryRestaurant.name })).toBeVisible();
+    });
+
     it(`${design.id} handles missing restaurant, menu, and category content safely`, () => {
       const { unmount } = render(<design.Home restaurant={null} />);
       expect(screen.getByRole("heading", { level: 1, name: "Omni REST" })).toBeVisible();

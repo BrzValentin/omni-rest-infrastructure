@@ -106,3 +106,14 @@
 @media (max-width: 70rem) { .designWorkspace { grid-template-columns: 1fr; } .designPreviewSection { position: static; } }
 @media (max-width: 48rem) { .formGrid, .hoursGrid { grid-template-columns: 1fr; } .adminHeader, .editorHeading { align-items: flex-start; flex-direction: column; } .intervalRow { grid-template-columns: 1fr 1fr; } .intervalRow button { grid-column: 1 / -1; } }
 @media (max-width: 48rem) { .designHeading { align-items: flex-start; flex-direction: column; } .designGrid { grid-template-columns: 1fr; } .designPreviewFrame { min-height: 31rem; padding: .4rem; } .designPreviewFrame iframe { height: 38rem; } }
+.categoryList { display: grid; gap: .5rem; margin: 1rem 0 0; padding: 0; list-style: none; counter-reset: category; }
+.categoryRow { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1rem; padding: .75rem; border: 1px solid #d7d0c1; border-radius: .5rem; background: #f7f4ed; cursor: grab; }
+.categoryRow:focus-within { outline: .2rem solid #d07b24; outline-offset: .15rem; }
+.categoryDrag { color: #6d6a60; font-size: 1.25rem; line-height: 1; }
+.categoryMeta { display: flex; flex: 1 1 16rem; flex-wrap: wrap; align-items: baseline; gap: .35rem .75rem; }
+.categoryMeta span { color: #4c4a43; font-size: .9rem; }
+.categoryActions { display: flex; flex-wrap: wrap; gap: .5rem; margin-left: auto; }
+@media (max-width: 48rem) { .categoryRow { align-items: flex-start; flex-direction: column; } .categoryActions { margin-left: 0; } }
+.dishThumbnail { width: 4rem; height: 4rem; border-radius: .35rem; object-fit: cover; }
+.availableBadge { padding: .1rem .5rem; border-radius: 1rem; background: #dff0e4; color: #17512f; font-weight: 700; }
+.unavailableBadge { padding: .1rem .5rem; border-radius: 1rem; background: #f7e0d8; color: #7a2c12; font-weight: 700; }

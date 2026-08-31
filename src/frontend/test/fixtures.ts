@@ -1,5 +1,41 @@
 import type { PublicMenuResponse } from "@/lib/menu-contract";
-import { websiteDesignIds, type PublicRestaurant } from "@/lib/restaurant-contract";
+import { websiteDesignIds, type GalleryPhoto, type PublicRestaurant } from "@/lib/restaurant-contract";
+
+export const galleryPhotos: readonly GalleryPhoto[] = [
+  {
+    id: "88888888-8888-4888-8888-888888888881",
+    imageUrl: "/media/gallery/patio.webp",
+    thumbnailUrl: "/media/gallery/patio-thumb.webp",
+    altText: "Sunny patio seating",
+    caption: "Patio seating opens in May.",
+    width: 1600,
+    height: 1067,
+    thumbnailWidth: 480,
+    thumbnailHeight: 320,
+  },
+  {
+    id: "88888888-8888-4888-8888-888888888882",
+    imageUrl: "/media/gallery/counter.webp",
+    thumbnailUrl: "/media/gallery/counter-thumb.webp",
+    altText: "Chef plating at the counter",
+    caption: null,
+    width: 1400,
+    height: 1400,
+    thumbnailWidth: 480,
+    thumbnailHeight: 480,
+  },
+  {
+    id: "88888888-8888-4888-8888-888888888883",
+    imageUrl: "/media/gallery/room.webp",
+    thumbnailUrl: "/media/gallery/room-thumb.webp",
+    altText: "Dining room at dusk",
+    caption: "The dining room at dusk.",
+    width: 1200,
+    height: 900,
+    thumbnailWidth: 400,
+    thumbnailHeight: 300,
+  },
+];
 
 export const ordinaryRestaurant: PublicRestaurant = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -33,6 +69,7 @@ export const ordinaryRestaurant: PublicRestaurant = {
     altText: "Dining room",
     variants: [{ url: "/media/restaurant.webp", width: 1200, height: 800 }],
   },
+  gallery: galleryPhotos,
   publicationVersion: "1",
   websiteDesignId: websiteDesignIds.legacyCurrent,
 };

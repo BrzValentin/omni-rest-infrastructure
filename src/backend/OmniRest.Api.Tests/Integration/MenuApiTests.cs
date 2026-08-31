@@ -216,7 +216,27 @@ public sealed class MenuApiTests(PostgresFixture postgres)
         Assert.Contains("/api/v1/admin/restaurant/profile", document, StringComparison.Ordinal);
         Assert.DoesNotContain("concurrencyVersion", document, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("archivedAt", document, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("patch", document, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/api/v1/admin/gallery", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/public/restaurant/gallery", document, StringComparison.Ordinal);
+        // Phase 4 adds partial updates for menu categories and dishes and Phase 5 adds them for the gallery;
+        // no other route may expose PATCH.
+        using var parsed = System.Text.Json.JsonDocument.Parse(document);
+        var patchPaths = parsed.RootElement.GetProperty("paths").EnumerateObject()
+            .Where(path => path.Value.EnumerateObject().Any(operation =>
+                string.Equals(operation.Name, "patch", StringComparison.OrdinalIgnoreCase)))
+            .Select(path => path.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            [
+                "/api/v1/admin/gallery/reorder",
+                "/api/v1/admin/gallery/{id}",
+                "/api/v1/admin/menu/categories/reorder",
+                "/api/v1/admin/menu/categories/{id}",
+                "/api/v1/admin/menu/dishes/reorder",
+                "/api/v1/admin/menu/dishes/{id}",
+                "/api/v1/admin/menu/dishes/{id}/availability",
+                "/api/v1/admin/menu/dishes/{id}/price"
+            ],
+            patchPaths);
     }
 
     [Fact]

@@ -25,6 +25,21 @@ export type Address = {
 export type RegularHoursDay = { dayOfWeek: number; intervals: HourInterval[] };
 export type SpecialHours = { id: string; date: string; isClosed: boolean; note: string | null; intervals: HourInterval[] };
 export type SocialLink = { platform: string; url: string };
+export type GalleryPhoto = Readonly<{
+  id: string;
+  imageUrl: string;
+  thumbnailUrl: string;
+  altText: string;
+  caption: string | null;
+  width: number;
+  height: number;
+  thumbnailWidth: number;
+  thumbnailHeight: number;
+}>;
+export type PublicGalleryResponse = {
+  publicationVersion: string;
+  images: readonly GalleryPhoto[];
+};
 export type MediaVariant = { url: string; width: number; height: number };
 export type MainImage = { id: string; altText: string; processingStatus: string; variants: MediaVariant[] };
 export type AdminMediaAsset = MainImage;
@@ -52,5 +67,7 @@ export type PublicRestaurant = {
   regularHours: RegularHoursDay[]; specialHours: Omit<SpecialHours, "id">[];
   status: { state: string; label: string; nextChangeAt: string | null; source: string };
   socialLinks: SocialLink[]; mainImage: Omit<MainImage, "id" | "processingStatus"> | null;
+  /** Published, active photos in display order. Older snapshots omit it — read it as `gallery ?? []`. */
+  gallery: readonly GalleryPhoto[];
   publicationVersion: string; websiteDesignId: WebsiteDesignId;
 };

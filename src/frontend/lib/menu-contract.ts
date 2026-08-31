@@ -157,6 +157,11 @@ function parseRestaurant(
     mainImage: restaurant.mainImage === null
       ? null
       : parseRestaurantMainImage(restaurant.mainImage, allowedMediaHosts),
+    gallery: restaurant.gallery === undefined || restaurant.gallery === null
+      ? []
+      : array(restaurant.gallery, "restaurant.gallery").map((item, index) =>
+        parseGalleryPhoto(item, `restaurant.gallery[${index}]`, allowedMediaHosts),
+      ),
     publicationVersion: canonicalVersion(restaurant.publicationVersion, "restaurant.publicationVersion"),
     websiteDesignId: resolveWebsiteDesignId(restaurant.websiteDesignId),
   };
@@ -170,6 +175,31 @@ function parseRestaurantMainImage(
   return {
     altText: media.altText,
     variants: media.variants.map((variant) => ({ ...variant })),
+  };
+}
+
+function parseGalleryPhoto(
+  value: unknown,
+  path: string,
+  allowedMediaHosts: ReadonlySet<string>,
+): PublicRestaurant["gallery"][number] {
+  const photo = record(value, path);
+  const imageUrl = string(photo.imageUrl, `${path}.imageUrl`);
+  if (!safeMediaUrl(imageUrl, allowedMediaHosts)) fail(`${path}.imageUrl`, "safe relative or allowlisted HTTPS URL");
+  const thumbnailUrl = string(photo.thumbnailUrl, `${path}.thumbnailUrl`);
+  if (!safeMediaUrl(thumbnailUrl, allowedMediaHosts)) {
+    fail(`${path}.thumbnailUrl`, "safe relative or allowlisted HTTPS URL");
+  }
+  return {
+    id: uuid(photo.id, `${path}.id`),
+    imageUrl,
+    thumbnailUrl,
+    altText: nonblank(photo.altText, `${path}.altText`),
+    caption: nullableString(photo.caption, `${path}.caption`),
+    width: positiveInteger(photo.width, `${path}.width`),
+    height: positiveInteger(photo.height, `${path}.height`),
+    thumbnailWidth: positiveInteger(photo.thumbnailWidth, `${path}.thumbnailWidth`),
+    thumbnailHeight: positiveInteger(photo.thumbnailHeight, `${path}.thumbnailHeight`),
   };
 }
 

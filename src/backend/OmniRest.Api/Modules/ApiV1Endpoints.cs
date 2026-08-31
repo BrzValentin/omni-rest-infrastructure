@@ -11,7 +11,7 @@ internal static class ApiV1Endpoints
         apiV1.MapGet("", () => TypedResults.Ok(new ApiVersionResponse("v1")));
         apiV1.MapGroup("/public").MapPublicMenuEndpoints().MapPublicRestaurantEndpoints();
         apiV1.MapGroup("/auth").MapAuthEndpoints();
-        apiV1.MapGroup("/admin").MapAdminRestaurantEndpoints();
+        apiV1.MapGroup("/admin").MapAdminRestaurantEndpoints().MapAdminMenuEndpoints().MapAdminGalleryEndpoints();
 
         return endpoints;
     }

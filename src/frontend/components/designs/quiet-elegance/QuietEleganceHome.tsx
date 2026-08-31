@@ -1,4 +1,5 @@
 import type { WebsiteDesignHomeProps } from "../design-contract";
+import { DesignGallery } from "../shared/DesignGallery";
 import {
   DesignFooter,
   DesignSkipLink,
@@ -17,6 +18,7 @@ const styles = createDesignClassNames("quiet-elegance-v1");
 
 export default function QuietEleganceHome({ restaurant }: WebsiteDesignHomeProps) {
   const name = restaurant?.name ?? "Omni REST";
+  const gallery = restaurant?.gallery ?? [];
   return (
     <div className={styles.shell} data-website-design="quiet-elegance-v1">
       <DesignSkipLink className={styles.skipLink} />
@@ -42,6 +44,9 @@ export default function QuietEleganceHome({ restaurant }: WebsiteDesignHomeProps
               <RestaurantHours restaurant={restaurant} className={styles.hoursSection} headingId="quiet-hours" />
             </div>
             <RestaurantSpecialHours restaurant={restaurant} className={styles.specialSection} headingId="quiet-special" />
+            {gallery.length > 0 ? (
+              <DesignGallery photos={gallery} classes={styles} headingId="quiet-gallery" restaurantName={name} />
+            ) : null}
             <RestaurantSocialLinks restaurant={restaurant} className={styles.socialLinks} />
           </>
         ) : null}

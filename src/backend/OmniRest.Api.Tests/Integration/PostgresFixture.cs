@@ -16,17 +16,27 @@ public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>
 
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer container = new PostgreSqlBuilder("postgres:18")
+    /// <summary>
+    /// Optional PostgreSQL 18 connection string used instead of Testcontainers, for hosts where the
+    /// Docker client library cannot be loaded. Every test recreates the target database from scratch,
+    /// so this must point at a disposable database and never at development or production data.
+    /// </summary>
+    private static readonly string? ExternalConnectionString =
+        Environment.GetEnvironmentVariable("OMNI_TEST_POSTGRES");
+
+    private readonly Lazy<PostgreSqlContainer> container = new(() => new PostgreSqlBuilder("postgres:18")
         .WithDatabase("omni_rest_tests")
         .WithUsername("omni_rest")
         .WithPassword("test_only_password")
-        .Build();
+        .Build());
 
-    public string ConnectionString => container.GetConnectionString();
+    public string ConnectionString => ExternalConnectionString ?? container.Value.GetConnectionString();
 
-    public Task InitializeAsync() => container.StartAsync();
+    public Task InitializeAsync() =>
+        ExternalConnectionString is null ? container.Value.StartAsync() : Task.CompletedTask;
 
-    public Task DisposeAsync() => container.DisposeAsync().AsTask();
+    public Task DisposeAsync() =>
+        ExternalConnectionString is null ? container.Value.DisposeAsync().AsTask() : Task.CompletedTask;
 
     public MenuApiFactory CreateFactory() => new(ConnectionString);
 

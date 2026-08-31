@@ -1,4 +1,5 @@
 import type { WebsiteDesignHomeProps } from "../design-contract";
+import { DesignGallery } from "../shared/DesignGallery";
 import {
   DesignFooter,
   DesignSkipLink,
@@ -17,6 +18,7 @@ const styles = createDesignClassNames("broadsheet-v1");
 
 export default function BroadsheetHome({ restaurant }: WebsiteDesignHomeProps) {
   const name = restaurant?.name ?? "Omni REST";
+  const gallery = restaurant?.gallery ?? [];
   return (
     <div className={styles.shell} data-website-design="broadsheet-v1">
       <DesignSkipLink className={styles.skipLink} />
@@ -54,6 +56,9 @@ export default function BroadsheetHome({ restaurant }: WebsiteDesignHomeProps) {
               <RestaurantHours restaurant={restaurant} className={styles.hoursSection} headingId="sheet-hours" />
             </div>
             <RestaurantSpecialHours restaurant={restaurant} className={styles.specialSection} headingId="sheet-special" />
+            {gallery.length > 0 ? (
+              <DesignGallery photos={gallery} classes={styles} headingId="sheet-gallery" restaurantName={name} />
+            ) : null}
             <RestaurantSocialLinks restaurant={restaurant} className={styles.socialLinks} />
           </>
         ) : null}

@@ -42,4 +42,6 @@ src/frontend/.playwright-cli/
 .claude
 RUN_LOCALLY_WINDOWS.md
 Winnipeg restorans website.zip
-local-dev.ps1 
+local-dev.ps1
+local-dev.cmd
+src/backend/OmniRest.Api/.media-uploads/

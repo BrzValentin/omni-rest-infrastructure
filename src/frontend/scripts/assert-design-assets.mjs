@@ -86,20 +86,27 @@ for (const designId of styleIds) {
     throw new Error(`${designId} stylesheet is unexpectedly empty.`);
   }
   styleHashes.add(createHash("sha256").update(stylesheet).digest("hex"));
+  const css = stylesheet.toString("utf8");
   const selectors = new Set(
-    [...stylesheet.toString("utf8").matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/g)]
+    [...css.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/g)]
       .map((match) => match[1]),
   );
   const expectedPrefix = `${designId}__`;
   const unscopedSelectors = [...selectors]
     .filter((selector) => !selector.startsWith(expectedPrefix));
-  const unscopedRules = extractCssSelectors(stylesheet.toString("utf8"))
+  const unscopedRules = extractCssSelectors(css)
     .filter((selector) => !selector.includes(`.${expectedPrefix}`));
-  if (selectors.size === 0 || unscopedSelectors.length > 0 || unscopedRules.length > 0) {
+  // Animation names share one global namespace, so they are scoped exactly like the class selectors are.
+  const unscopedKeyframes = [...css.matchAll(/@(?:-[A-Za-z]+-)?keyframes\s+([^\s{]+)/g)]
+    .map((match) => match[1])
+    .filter((name) => !name.startsWith(expectedPrefix));
+  if (selectors.size === 0 || unscopedSelectors.length > 0 || unscopedRules.length > 0
+    || unscopedKeyframes.length > 0) {
     throw new Error(
       `${designId} stylesheet has selectors outside its immutable namespace: ${[
         ...unscopedSelectors,
         ...unscopedRules,
+        ...unscopedKeyframes,
       ].join(", ")}`,
     );
   }
@@ -139,8 +146,12 @@ function extractCssSelectors(css) {
       if (context === "rule") continue;
       const value = prelude.trim();
       prelude = "";
-      if (value.startsWith("@")) {
-        contexts.push("at-rule");
+      // Keyframe steps (`from`, `to`, `0%`) are not selectors and cannot carry the design prefix; the animation
+      // name is namespace-checked separately.
+      if (context === "keyframes") {
+        contexts.push("rule");
+      } else if (value.startsWith("@")) {
+        contexts.push(/^@(?:-[A-Za-z]+-)?keyframes\b/.test(value) ? "keyframes" : "at-rule");
       } else {
         selectors.push(...value.split(",").map((selector) => selector.trim()));
         contexts.push("rule");

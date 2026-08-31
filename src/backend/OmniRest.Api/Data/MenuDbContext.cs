@@ -28,6 +28,7 @@ public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> option
     public DbSet<SocialLinkEntity> SocialLinks => Set<SocialLinkEntity>();
     public DbSet<PublicationOutboxEntity> PublicationOutbox => Set<PublicationOutboxEntity>();
     public DbSet<AuditEventEntity> AuditEvents => Set<AuditEventEntity>();
+    public DbSet<GalleryImageEntity> GalleryImages => Set<GalleryImageEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +44,7 @@ public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> option
         ConfigureBadges(modelBuilder.Entity<BadgeEntity>(), modelBuilder.Entity<DishBadgeEntity>());
         ConfigurePublication(modelBuilder.Entity<PublicationEntity>());
         ConfigurePhase3(modelBuilder);
+        ConfigurePhase5(modelBuilder);
     }
 
     private static void ConfigureRestaurant(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<RestaurantEntity> entity)
@@ -116,6 +118,8 @@ public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> option
         variant.Property(x => x.Url).HasColumnName("url").HasMaxLength(2048).IsRequired();
         variant.Property(x => x.Width).HasColumnName("width");
         variant.Property(x => x.Height).HasColumnName("height");
+        variant.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(512);
+        variant.Property(x => x.FileSizeBytes).HasColumnName("file_size_bytes");
         variant.Property(x => x.ConcurrencyVersion).HasColumnName("concurrency_version").HasDefaultValue(1L).IsConcurrencyToken();
         variant.HasIndex(x => new { x.Id, x.RestaurantId }).IsUnique();
         variant.HasIndex(x => new { x.MediaAssetId, x.Width, x.Height }).IsUnique();
@@ -277,6 +281,7 @@ public sealed class RestaurantEntity
     public ICollection<RegularHourIntervalEntity> RegularHours { get; } = [];
     public ICollection<SpecialHourEntity> SpecialHours { get; } = [];
     public ICollection<SocialLinkEntity> SocialLinks { get; } = [];
+    public ICollection<GalleryImageEntity> GalleryImages { get; } = [];
 }
 
 public sealed class RestaurantSettingsEntity
@@ -320,6 +325,12 @@ public sealed class MediaVariantEntity
     public string Url { get; set; } = null!;
     public int Width { get; set; }
     public int Height { get; set; }
+
+    /// <summary>Relative blob identity <c>{restaurantId:N}/{fileNameSeed}{extension}</c>; null for pre-Phase 5 rows.</summary>
+    public string? StorageKey { get; set; }
+
+    /// <summary>Byte length written to local storage; null for pre-Phase 5 rows.</summary>
+    public long? FileSizeBytes { get; set; }
     public long ConcurrencyVersion { get; set; } = 1;
     public MediaAssetEntity MediaAsset { get; set; } = null!;
 }

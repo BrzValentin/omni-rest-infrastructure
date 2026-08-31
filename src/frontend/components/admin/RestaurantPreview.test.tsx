@@ -16,6 +16,7 @@ const fixture: PublicRestaurant = {
   status: { state: "open", label: "Open", nextChangeAt: null, source: "regularHours" },
   socialLinks: [{ platform: "instagram", url: "https://instagram.com/example" }],
   mainImage: { altText: "Dining room", variants: [{ url: "https://images.example.test/main.webp", width: 800, height: 600 }] },
+  gallery: [],
   publicationVersion: "3", websiteDesignId: "legacy-current-v1",
 };
 

@@ -113,8 +113,68 @@ public static class GuardedSampleDataSeeder
         NewDish(mains, "Inactive Plate", 16m, 2, AvailabilityStatus.Unavailable, active: false);
 
         dbContext.MediaAssets.Add(media);
+        AddGallery(dbContext, restaurant);
         dbContext.Restaurants.Add(restaurant);
         AddPublication(dbContext, restaurant, menu, builder, serializer, 1);
+    }
+
+    /// <summary>
+    /// Seeds a four-photo gallery, the last of which is inactive so the public active-only filter is
+    /// visibly exercised. The rows reuse the seed blob that <see cref="CopySeedMediaAsync"/> already
+    /// copies, so no new file is written; each photo still gets its own media asset because
+    /// <c>(restaurant_id, media_asset_id)</c> is unique on the gallery table.
+    /// </summary>
+    private static void AddGallery(MenuDbContext dbContext, RestaurantEntity restaurant)
+    {
+        var photos = new (string AltText, string? Caption, bool Active)[]
+        {
+            ("The dining room at golden hour", "Golden hour in the dining room", true),
+            ("The chef plating a prairie main", "Plating a prairie main", true),
+            ("The bar with prairie spirits", null, true),
+            ("The patio before opening", "Patio, coming next summer", false)
+        };
+
+        for (var index = 0; index < photos.Length; index++)
+        {
+            var (altText, caption, active) = photos[index];
+            var asset = new MediaAssetEntity
+            {
+                Id = Id($"ordinary:gallery:asset:{index}"),
+                RestaurantId = restaurant.Id,
+                Restaurant = restaurant,
+                AltText = altText,
+                ProcessingStatus = "ready"
+            };
+            asset.Variants.Add(new MediaVariantEntity
+            {
+                Id = Id($"ordinary:gallery:variant:{index}"),
+                RestaurantId = restaurant.Id,
+                MediaAssetId = asset.Id,
+                MediaAsset = asset,
+                Url = "/media/uploads/seed/poutine-640.webp",
+                Width = 640,
+                Height = 480,
+                StorageKey = null,
+                FileSizeBytes = null
+            });
+            dbContext.MediaAssets.Add(asset);
+
+            var galleryImage = new GalleryImageEntity
+            {
+                Id = Id($"ordinary:gallery:image:{index}"),
+                RestaurantId = restaurant.Id,
+                Restaurant = restaurant,
+                MediaAssetId = asset.Id,
+                MediaAsset = asset,
+                Caption = caption,
+                DisplayOrder = index + 1,
+                IsActive = active,
+                CreatedAt = SeedTime,
+                UpdatedAt = SeedTime
+            };
+            restaurant.GalleryImages.Add(galleryImage);
+            dbContext.GalleryImages.Add(galleryImage);
+        }
     }
 
     private static void AddRestaurantWithoutPublication(MenuDbContext dbContext) =>
