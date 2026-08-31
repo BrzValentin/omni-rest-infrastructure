@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
@@ -5,9 +6,12 @@ import type { ReactNode } from "react";
 import { LogoutButton } from "@/components/admin/LogoutButton";
 import { getSession } from "@/lib/server-api";
 import { safeAdminReturnPath } from "@/lib/auth-contract";
+import { nonIndexableMetadata } from "@/lib/seo";
 import styles from "../admin.module.css";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = nonIndexableMetadata();
 
 export default async function ProtectedAdminLayout({ children }: { children: ReactNode }) {
   const [session, requestHeaders] = await Promise.all([getSession(), headers()]);
