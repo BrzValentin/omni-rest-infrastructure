@@ -5,6 +5,7 @@ export function createDesignClassNames(prefix: string) {
     badge: `${prefix}__badge`,
     badges: `${prefix}__badges`,
     brand: `${prefix}__brand`,
+    brandLogo: `${prefix}__brandLogo`,
     browser: `${prefix}__browser`,
     categoryHeading: `${prefix}__categoryHeading`,
     categoryLink: `${prefix}__categoryLink`,

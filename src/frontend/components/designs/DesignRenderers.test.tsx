@@ -125,6 +125,29 @@ describe("selectable website design renderers", () => {
   });
 
   for (const design of allRenderers) {
+    /**
+     * Phase 6 published a `logo` that only ever reached the JSON-LD. PR-20 Task 6 requires branding to
+     * be restaurant-specific on the page itself, so every design must show the tenant's own logo — and
+     * must still render when a pre-Phase-6 snapshot carries `logo: null`.
+     */
+    it(`${design.id} brands the header with the restaurant's own logo`, () => {
+      const withLogo = render(<design.Home restaurant={ordinaryRestaurant} />);
+      const logo = withLogo.container.querySelector('img[src="/media/logo.webp"]');
+      expect(logo).not.toBeNull();
+      // Decorative: the restaurant name sits in the same link, so the logo must not repeat it.
+      expect(logo).toHaveAttribute("alt", "");
+      expect(withLogo.container.querySelector("header")).toContainElement(logo as HTMLElement);
+      withLogo.unmount();
+
+      const menuWithLogo = render(<design.Menu site={{ ...ordinaryMenu, websiteDesignId: design.id }} />);
+      expect(menuWithLogo.container.querySelector('img[src="/media/logo.webp"]')).not.toBeNull();
+      menuWithLogo.unmount();
+
+      render(<design.Home restaurant={{ ...ordinaryRestaurant, logo: null }} />);
+      expect(screen.getByRole("heading", { level: 1, name: ordinaryRestaurant.name })).toBeVisible();
+      expect(document.querySelector('img[src="/media/logo.webp"]')).toBeNull();
+    });
+
     it(`${design.id} renders the gallery section only when the snapshot carries photos`, () => {
       const withPhotos = render(<design.Home restaurant={ordinaryRestaurant} />);
       expect(screen.getByRole("heading", { level: 2, name: "Gallery" }))
@@ -148,8 +171,12 @@ describe("selectable website design renderers", () => {
     });
 
     it(`${design.id} handles missing restaurant, menu, and category content safely`, () => {
-      const { unmount } = render(<design.Home restaurant={null} />);
-      expect(screen.getByRole("heading", { level: 1, name: "Omni REST" })).toBeVisible();
+      const { container, unmount } = render(<design.Home restaurant={null} />);
+      // A restaurant that could not be resolved is nameless, never the platform's own brand: on a
+      // multi-tenant host that is a name belonging to no restaurant served there (PR-20 Task 6).
+      expect(screen.getByRole("heading", { level: 1, name: "Restaurant" })).toBeVisible();
+      expect(container.textContent).not.toMatch(/Omni/i);
+      expect(container.querySelector("img")).toBeNull();
       expect(screen.queryByRole("link", { name: /Call/ })).not.toBeInTheDocument();
       unmount();
 

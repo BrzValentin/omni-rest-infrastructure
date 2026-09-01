@@ -74,27 +74,43 @@ public sealed class MenuApiTests(PostgresFixture postgres)
             .ToArray();
         Assert.NotEmpty(publishedVariantUrls);
 
-        IReadOnlyList<string> variantUrls;
+        IReadOnlyList<(Guid RestaurantId, string Url)> variants;
         await using (var scope = factory.Services.CreateAsyncScope())
         {
+            // The tenant scope is unbound here, so this deliberately sees every restaurant's variants.
             var dbContext = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
-            variantUrls = await dbContext.MediaVariants.AsNoTracking()
+            variants = await dbContext.MediaVariants.AsNoTracking()
                 .OrderBy(item => item.Url)
-                .Select(item => item.Url)
+                .Select(item => new ValueTuple<Guid, string>(item.RestaurantId, item.Url))
                 .ToArrayAsync();
         }
 
-        Assert.NotEmpty(variantUrls);
+        var variantUrls = variants.Select(item => item.Url).ToArray();
+        Assert.NotEmpty(variants);
         Assert.All(publishedVariantUrls, url => Assert.Contains(url, variantUrls));
-        Assert.All(variantUrls, url => Assert.StartsWith("/media/uploads/seed/", url, StringComparison.Ordinal));
-        foreach (var url in variantUrls)
+
+        // Every media URL is filed under the restaurant that owns it, which is what makes the
+        // per-tenant media check in PR-20 Task 8 expressible at all.
+        Assert.All(variants, item => Assert.StartsWith(
+            $"/media/uploads/{item.RestaurantId:N}/", item.Url, StringComparison.Ordinal));
+        Assert.Contains(variants, item => item.RestaurantId == GuardedSampleDataSeeder.AlternateRestaurantId);
+
+        foreach (var (restaurantId, url) in variants)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Host = "menu.localhost";
             using var response = await client.SendAsync(request);
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("image/webp", response.Content.Headers.ContentType?.MediaType);
+            if (restaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId)
+            {
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Equal("image/webp", response.Content.Headers.ContentType?.MediaType);
+            }
+            else
+            {
+                // Another tenant's blob is not readable from this host even with its exact URL.
+                Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            }
         }
     }
 
@@ -266,12 +282,16 @@ public sealed class MenuApiTests(PostgresFixture postgres)
             .UseNpgsql(postgres.ConnectionString)
             .AddInterceptors(counter)
             .Options;
-        await using var context = new MenuDbContext(options);
+        // Wired the way the request pipeline wires it, so the count covers the tenant-scoped filters
+        // the reader now runs under rather than an unfiltered shortcut.
+        var tenantScope = new TenantScope();
+        await using var context = new MenuDbContext(options, tenantScope);
         await using var scope = factory.Services.CreateAsyncScope();
         var environment = scope.ServiceProvider.GetRequiredService<IHostEnvironment>();
         var resolver = new RestaurantResolver(context, environment, Options.Create(new PublicMenuOptions()));
+        var restaurantContext = new RestaurantContext(resolver, tenantScope, context);
         using var memoryCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 64 });
-        var reader = new PublicMenuReader(resolver, context, memoryCache, new PublicMenuSnapshotSerializer());
+        var reader = new PublicMenuReader(restaurantContext, context, memoryCache, new PublicMenuSnapshotSerializer());
 
         var result = await reader.ReadAsync(new HostString("menu.localhost"), CancellationToken.None);
 

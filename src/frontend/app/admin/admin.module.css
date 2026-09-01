@@ -3,6 +3,8 @@
 .skipLink:focus { top: 1rem; }
 .adminHeader { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 4rem); background: #213b32; color: #fff; }
 .adminHeader > a { color: inherit; font-size: 1.1rem; font-weight: 750; text-decoration: none; }
+.portalBrand { display: inline-flex; flex-direction: column; line-height: 1.2; }
+.managedRestaurant { font-size: .82rem; font-weight: 650; opacity: .85; }
 .adminHeader nav { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
 .adminHeader nav a, .adminHeader nav button { min-height: 2.75rem; display: inline-flex; align-items: center; padding: .5rem .75rem; border: 0; border-radius: .4rem; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .adminHeader nav a:hover, .adminHeader nav button:hover { background: rgb(255 255 255 / 12%); }

@@ -18,7 +18,7 @@ public sealed class MigrationTests(PostgresFixture postgres)
 
         var pending = await context.Database.GetPendingMigrationsAsync();
         Assert.Empty(pending);
-        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]

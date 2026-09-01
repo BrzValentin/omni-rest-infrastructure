@@ -6,6 +6,7 @@ import { request as httpsRequest } from "node:https";
 import { headers } from "next/headers";
 
 import { parsePublicMenuResponse, type PublicMenuResponse } from "./menu-contract";
+import { tenantHostOrNull } from "./tenant-host";
 
 export class PublicMenuApiError extends Error {
   constructor(public readonly status: number) {
@@ -57,15 +58,14 @@ function requestPublicMenu(url: URL, host: string): Promise<{ status: number; bo
   });
 }
 
+/**
+ * The tenant hostname for this request, or a `404` when the `Host` header cannot produce one.
+ *
+ * The rules live in `lib/tenant-host.ts` so every host-forwarding surface — this reader, the API
+ * proxy, the media proxy, and `lib/server-api.ts` — fails closed in exactly the same way.
+ */
 export function normalizePublicHost(rawHost: string | null): string {
-  if (!rawHost || rawHost.length > 259 || /[\s,\\/]/.test(rawHost)) {
-    throw new PublicMenuApiError(404);
-  }
-  try {
-    const parsed = new URL(`http://${rawHost}`);
-    if (parsed.username || parsed.password || parsed.pathname !== "/") throw new Error("Unsafe host");
-    return parsed.hostname.toLowerCase().replace(/\.$/, "");
-  } catch {
-    throw new PublicMenuApiError(404);
-  }
+  const host = tenantHostOrNull(rawHost);
+  if (!host) throw new PublicMenuApiError(404);
+  return host;
 }

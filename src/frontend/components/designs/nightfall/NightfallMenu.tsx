@@ -44,7 +44,7 @@ export default function NightfallMenu({ site }: WebsiteDesignMenuProps) {
     <div className={styles.shell} data-website-design="nightfall-v1">
       <DesignSkipLink className={styles.skipLink} />
       <header className={styles.header}>
-        <HomeLink className={styles.brand} restaurantName={site.restaurantName} />
+        <HomeLink className={styles.brand} restaurantName={site.restaurantName} logo={site.restaurant?.logo} logoClassName={styles.brandLogo} />
         <nav aria-label="Primary navigation">
           <MenuNavigationLink className={styles.navLink} />
         </nav>

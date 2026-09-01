@@ -4,6 +4,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { headers } from "next/headers";
 import type { Session } from "./auth-contract";
+import { tenantHostOrNull } from "./tenant-host";
 import type { PublicMenuResponse } from "./menu-contract";
 import type { AdminMenu } from "./menu-admin-contract";
 import type { AdminGallery } from "./gallery-admin-contract";
@@ -19,7 +20,11 @@ export type WebsiteDesignPreview = PublicMenuResponse & { restaurant: PublicRest
 async function serverGet<T>(path: string): Promise<{ status: number; data: T | null }> {
   const incoming = await headers();
   const url = new URL(path, process.env.OMNI_REST_API_BASE_URL ?? "http://127.0.0.1:5279");
-  const host = incoming.get("host")?.split(":", 1)[0] ?? "menu.localhost";
+  // A request that carries no usable `Host` resolves to no restaurant at all. Substituting a default
+  // would serve one tenant's data to every unaddressed request, so this fails closed with the same
+  // `404` the backend returns for an unknown host, without contacting the API.
+  const host = tenantHostOrNull(incoming.get("host"));
+  if (!host) return { status: 404, data: null };
   return new Promise((resolve, reject) => {
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
       method: "GET",

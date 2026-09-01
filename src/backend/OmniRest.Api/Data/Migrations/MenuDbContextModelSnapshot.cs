@@ -1099,11 +1099,20 @@ namespace OmniRest.Api.Data.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("restaurant_type");
 
+                    b.Property<string>("Slug")
+                        .HasMaxLength(63)
+                        .HasColumnType("character varying(63)")
+                        .HasColumnName("slug");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasFilter("slug IS NOT NULL");
 
                     b.HasIndex("CoverMediaAssetId", "Id");
 
@@ -1122,6 +1131,8 @@ namespace OmniRest.Api.Data.Migrations
                             t.HasCheckConstraint("ck_restaurants_price_range", "price_range IS NULL OR price_range IN ('$','$$','$$$','$$$$')");
 
                             t.HasCheckConstraint("ck_restaurants_restaurant_type", "restaurant_type IS NULL OR restaurant_type IN ('Restaurant','CafeOrCoffeeShop','Bakery','BarOrPub','Brewery','Distillery','FastFoodRestaurant','IceCreamShop','Winery')");
+
+                            t.HasCheckConstraint("ck_restaurants_slug", "slug IS NULL OR (length(slug) BETWEEN 1 AND 63 AND slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')");
                         });
                 });
 

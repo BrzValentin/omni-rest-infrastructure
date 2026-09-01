@@ -108,6 +108,27 @@ test.describe("@seo", () => {
     expect((await request.get(`${loopback}/menu/not-a-real-category`, asHost())).status()).toBe(404);
     expect((await request.get(`${loopback}/no-such-page`, asHost())).status()).toBe(404);
     expect((await request.get(`${loopback}/menu`, asHost("unknown-tenant.localhost:3000"))).status()).toBe(404);
+
+    // PR-20: the home page of an unresolved tenant is a 404 too. It used to answer 200 with a page
+    // branded for no restaurant on this host.
+    const unknownHome = await request.get(`${loopback}/`, asHost("unknown-tenant.localhost:3000"));
+    expect(unknownHome.status()).toBe(404);
+    expect(await unknownHome.text()).not.toContain("Omni REST");
+  });
+
+  test("serves each tenant its own document language and content", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Document language is browser-independent.");
+
+    // Every restaurant carries its own locale, and only the root layout can set `<html lang>`. A
+    // hardcoded language would mislabel this fr-CA tenant's page for assistive technology (PR-20
+    // Tasks 5-6).
+    await page.goto("http://alternate.localhost:3000/menu");
+    await expect(page.locator("html")).toHaveAttribute("lang", "fr-CA");
+    await expect(page.getByRole("heading", { level: 1, name: "Café Boréal" })).toBeVisible();
+    expect(await page.content()).not.toContain("Prairie Table");
+
+    await page.goto(`${origin}/menu`);
+    await expect(page.locator("html")).toHaveAttribute("lang", "en-CA");
   });
 
   // The upstream-failure case — a transient fault must surface as a 5xx, never as a 404 — is asserted

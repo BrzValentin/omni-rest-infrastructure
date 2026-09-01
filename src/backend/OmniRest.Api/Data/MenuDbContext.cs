@@ -1,14 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using OmniRest.Api.Infrastructure;
 using OmniRest.Api.Menus;
 using OmniRest.Api.Restaurants;
 
 namespace OmniRest.Api.Data;
 
-public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> options)
+/// <summary>
+/// The <paramref name="tenantScope"/> is optional so migrations, the design-time factory, and tests
+/// that new up a context directly keep working. When it is absent the Phase 7 query filters are inert
+/// and the context behaves exactly as it did before multi-tenancy.
+/// </summary>
+public sealed partial class MenuDbContext(
+    DbContextOptions<MenuDbContext> options,
+    ITenantScope? tenantScope = null)
     : IdentityDbContext<OwnerUser, IdentityRole<Guid>, Guid>(options)
 {
+    private readonly ITenantScope? tenantScope = tenantScope;
+
     public DbSet<RestaurantEntity> Restaurants => Set<RestaurantEntity>();
     public DbSet<RestaurantSettingsEntity> RestaurantSettings => Set<RestaurantSettingsEntity>();
     public DbSet<RestaurantDomainEntity> RestaurantDomains => Set<RestaurantDomainEntity>();
@@ -46,6 +56,7 @@ public sealed partial class MenuDbContext(DbContextOptions<MenuDbContext> option
         ConfigurePhase3(modelBuilder);
         ConfigurePhase5(modelBuilder);
         ConfigurePhase6(modelBuilder);
+        ConfigurePhase7(modelBuilder);
     }
 
     private static void ConfigureRestaurant(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<RestaurantEntity> entity)
@@ -263,6 +274,13 @@ public sealed class RestaurantEntity
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = null!;
+
+    /// <summary>
+    /// The tenant's label on a shared platform domain, so <c>prairie-table.example.app</c> resolves
+    /// without a dedicated <see cref="RestaurantDomainEntity"/> row. Null for a restaurant reached only
+    /// through an explicit custom domain. See <see cref="RestaurantSlugs"/>.
+    /// </summary>
+    public string? Slug { get; set; }
     public string? Description { get; set; }
     public string? PhoneE164 { get; set; }
     public string? PhoneDisplay { get; set; }

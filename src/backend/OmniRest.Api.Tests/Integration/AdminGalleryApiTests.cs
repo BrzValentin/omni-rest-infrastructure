@@ -279,11 +279,11 @@ public sealed class AdminGalleryApiTests(PostgresFixture postgres)
         // as the thumbnail, so the two URLs must differ.
         Assert.NotEqual(appended.ImageUrl, appended.ThumbnailUrl);
 
-        using var originalBytes = await client.GetAsync(appended.ImageUrl);
+        using var originalBytes = await FetchMediaAsync(client, appended.ImageUrl);
         Assert.Equal(HttpStatusCode.OK, originalBytes.StatusCode);
         Assert.Equal(LargePng, await originalBytes.Content.ReadAsByteArrayAsync());
 
-        using var thumbnailBytes = await client.GetAsync(appended.ThumbnailUrl);
+        using var thumbnailBytes = await FetchMediaAsync(client, appended.ThumbnailUrl);
         Assert.Equal(HttpStatusCode.OK, thumbnailBytes.StatusCode);
         var thumbnail = Image.Identify(await thumbnailBytes.Content.ReadAsByteArrayAsync());
         Assert.Equal(ExpectedThumbnailWidth, thumbnail.Width);
@@ -346,7 +346,7 @@ public sealed class AdminGalleryApiTests(PostgresFixture postgres)
 
         // The 1x1 source needs no resize, so a single blob serves as both the image and the thumbnail.
         Assert.Equal(appended.ImageUrl, appended.ThumbnailUrl);
-        using var storedBytes = await client.GetAsync(appended.ImageUrl);
+        using var storedBytes = await FetchMediaAsync(client, appended.ImageUrl);
         Assert.Equal(HttpStatusCode.OK, storedBytes.StatusCode);
         Assert.Equal(Png, await storedBytes.Content.ReadAsByteArrayAsync());
 
@@ -386,6 +386,19 @@ public sealed class AdminGalleryApiTests(PostgresFixture postgres)
         using var buffer = new MemoryStream();
         image.Save(buffer, new PngEncoder());
         return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// Fetches a media blob for the seeded tenant. Media is served only to the restaurant that owns it
+    /// (PR-20 Task 8), and the owner client is bound to <c>localhost</c> so its auth cookie works, which
+    /// resolves to no restaurant under the Testing environment. In deployment the owner portal is served
+    /// from the restaurant's own host, so this substitution is a test-harness detail, not a product one.
+    /// </summary>
+    private static async Task<HttpResponseMessage> FetchMediaAsync(HttpClient client, string url)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Host = "menu.localhost";
+        return await client.SendAsync(request);
     }
 
     private static async Task<PublicGalleryResponse> ReadPublicGalleryAsync(HttpClient client)
@@ -467,7 +480,7 @@ public sealed class AdminGalleryApiTests(PostgresFixture postgres)
             RestaurantId = restaurantId,
             MediaAssetId = asset.Id,
             MediaAsset = asset,
-            Url = "/media/uploads/seed/poutine-640.webp",
+            Url = $"/media/uploads/{GuardedSampleDataSeeder.OrdinaryRestaurantId:N}/poutine-640.webp",
             Width = 640,
             Height = 480
         });

@@ -14,7 +14,7 @@ export const websiteDesignMetadata: Readonly<Record<WebsiteDesignId, WebsiteDesi
   [websiteDesignIds.legacyCurrent]: {
     id: websiteDesignIds.legacyCurrent,
     name: "Current design",
-    description: "The original Omni REST presentation retained for existing restaurants.",
+    description: "The original presentation, retained for restaurants already using it.",
     tone: "legacy",
   },
   [websiteDesignIds.quietElegance]: {

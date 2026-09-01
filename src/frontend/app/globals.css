@@ -103,6 +103,15 @@ button {
   font-size: 0.8rem;
 }
 
+/* The published restaurant logo, shown in place of the initials mark when one exists. */
+.publicBrandLogo {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .publicNavLink {
   display: inline-grid;
   min-width: 2.75rem;
@@ -184,7 +193,8 @@ button {
     outline-color: Highlight;
   }
 
-  .publicBrandMark {
+  .publicBrandMark,
+  .publicBrandLogo {
     border: 1px solid CanvasText;
   }
 }

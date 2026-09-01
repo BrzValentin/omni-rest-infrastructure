@@ -106,3 +106,4 @@
 @media (prefers-reduced-motion: reduce) { .sunroom-v1__galleryImage { transition: none; } .sunroom-v1__galleryThumbButton:hover .sunroom-v1__galleryImage { transform: none; } .sunroom-v1__gallerySkeleton { background: #dce7e9; animation: none; } }
 @media (max-width: 40rem) { .sunroom-v1__galleryGrid { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: .75rem; } }
 @media (forced-colors: active) { .sunroom-v1__galleryThumbButton, .sunroom-v1__lightboxNavButton { border: 2px solid ButtonText; } }
+.sunroom-v1__brandLogo { display: inline-block; width: 2.4rem; height: 2.4rem; margin-right: .55rem; border-radius: 50%; object-fit: cover; vertical-align: middle; }

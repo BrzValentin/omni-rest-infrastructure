@@ -41,7 +41,7 @@ export default function QuietEleganceMenu({ site }: WebsiteDesignMenuProps) {
     <div className={styles.shell} data-website-design="quiet-elegance-v1">
       <DesignSkipLink className={styles.skipLink} />
       <header className={styles.header}>
-        <HomeLink className={styles.brand} restaurantName={site.restaurantName} />
+        <HomeLink className={styles.brand} restaurantName={site.restaurantName} logo={site.restaurant?.logo} logoClassName={styles.brandLogo} />
         <nav aria-label="Primary navigation"><MenuNavigationLink className={styles.navLink} /></nav>
       </header>
       <main className={styles.menuMain} id="main-content" lang={site.locale}>

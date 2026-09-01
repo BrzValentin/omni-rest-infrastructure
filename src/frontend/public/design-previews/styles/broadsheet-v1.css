@@ -106,3 +106,4 @@
 @media (prefers-reduced-motion: reduce) { .broadsheet-v1__galleryImage { transition: none; } .broadsheet-v1__gallerySkeleton { background: #e9e4d6; animation: none; } }
 @media (max-width: 34rem) { .broadsheet-v1__galleryGrid { grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); } }
 @media (forced-colors: active) { .broadsheet-v1__galleryThumbButton, .broadsheet-v1__lightboxClose { border: 2px solid ButtonText; } }
+.broadsheet-v1__brandLogo { display: inline-block; width: 2.4rem; height: 2.4rem; margin-right: .55rem; border-radius: 50%; object-fit: cover; vertical-align: middle; }

@@ -15,7 +15,10 @@ export function RestaurantPreview({ restaurant }: { restaurant: PublicRestaurant
         <strong>Draft preview</strong><span>Only signed-in owners can see this page. These changes may not be published yet.</span><Link href="/admin/restaurant">Back to editor</Link>
       </aside>
       <article className={styles.previewCard}>
-        {image && <Image className={styles.previewHero} src={image.url} width={image.width} height={image.height} sizes="(max-width: 800px) 100vw, 800px" alt={restaurant.mainImage?.altText ?? ""} />}
+        {/* Draft imagery stays out of the optimizer, exactly as the editor and gallery managers do:
+            the optimizer cache is keyed by (src, width, quality) with no notion of who may see the
+            result, and this is the one owner-only surface that renders unpublished media. */}
+        {image && <Image unoptimized className={styles.previewHero} src={image.url} width={image.width} height={image.height} sizes="(max-width: 800px) 100vw, 800px" alt={restaurant.mainImage?.altText ?? ""} />}
         <p className={styles.eyebrow}>{restaurant.status.label}</p>
         <h1>{restaurant.name}</h1>
         {restaurant.shortDescription && <p>{restaurant.shortDescription}</p>}

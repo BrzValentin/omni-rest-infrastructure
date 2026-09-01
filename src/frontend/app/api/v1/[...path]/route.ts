@@ -3,7 +3,17 @@ import { request as httpsRequest } from "node:https";
 import type { IncomingHttpHeaders } from "node:http";
 import type { NextRequest } from "next/server";
 
+import { tenantHostOrNull } from "@/lib/tenant-host";
+
 export const dynamic = "force-dynamic";
+
+/** The same shape the API returns for an unknown restaurant, so clients need no special case. */
+function unresolvedTenant(): Response {
+  return new Response(
+    JSON.stringify({ status: 404, code: "restaurant_not_found", title: "Restaurant not found." }),
+    { status: 404, headers: { "content-type": "application/problem+json", "cache-control": "no-store" } },
+  );
+}
 
 function responseHeaders(source: IncomingHttpHeaders): Headers {
   const result = new Headers();
@@ -18,12 +28,18 @@ function responseHeaders(source: IncomingHttpHeaders): Headers {
 }
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  // The tenant is resolved from `Host` by the API, so a request without a usable one addresses no
+  // restaurant. It is refused here rather than forwarded under a default host, which would hand the
+  // caller another tenant's data (PR-20 Task 2).
+  const host = tenantHostOrNull(request.headers.get("host"));
+  if (!host) return unresolvedTenant();
+
   const { path } = await context.params;
   const url = new URL(`/api/v1/${path.join("/")}${request.nextUrl.search}`, process.env.OMNI_REST_API_BASE_URL ?? "http://127.0.0.1:5279");
   const body = request.method === "GET" || request.method === "HEAD" ? undefined : Buffer.from(await request.arrayBuffer());
   const outgoing: Record<string, string> = {
     accept: request.headers.get("accept") ?? "application/json",
-    host: request.headers.get("host")?.split(":", 1)[0] ?? "menu.localhost",
+    host,
   };
   const forwardedProto = process.env.OMNI_REST_FORWARDED_PROTO;
   if (forwardedProto === "http" || forwardedProto === "https") {

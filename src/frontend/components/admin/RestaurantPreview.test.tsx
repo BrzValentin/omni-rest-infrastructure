@@ -5,7 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { PublicRestaurant } from "@/lib/restaurant-contract";
 import { RestaurantPreview } from "./RestaurantPreview";
 
-vi.mock("next/image", () => ({ default: (props: Record<string, unknown>) => React.createElement("img", props) }));
+vi.mock("next/image", () => ({
+  default: (props: Record<string, unknown>) => {
+    const imageProps = { ...props };
+    Reflect.deleteProperty(imageProps, "unoptimized");
+    return React.createElement("img", imageProps);
+  },
+}));
 
 const fixture: PublicRestaurant = {
   id: "restaurant", name: "Prairie Table", shortDescription: "Seasonal", email: "hello@example.test", timeZone: "America/Winnipeg",

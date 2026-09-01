@@ -73,3 +73,4 @@
 .quiet-elegance-v1__lightboxNavButton:disabled { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .quiet-elegance-v1__galleryImage { transition: none; } .quiet-elegance-v1__gallerySkeleton { background: #e8e4dc; animation: none; } }
 @media (forced-colors: active) { .quiet-elegance-v1__galleryThumbButton, .quiet-elegance-v1__lightbox { border: 1px solid ButtonText; } }
+.quiet-elegance-v1__brandLogo { display: inline-block; width: 2.4rem; height: 2.4rem; margin-right: .55rem; border-radius: 50%; object-fit: cover; vertical-align: middle; }

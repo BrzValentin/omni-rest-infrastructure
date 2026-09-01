@@ -12,6 +12,13 @@ public sealed class PublicMenuOptions
 
     public Guid? DevelopmentDefaultRestaurantId { get; init; }
     public HashSet<string> AllowedMediaHosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Domains beneath which a single label is read as a restaurant slug, so
+    /// <c>prairie-table.example.app</c> resolves that tenant without a dedicated domain row
+    /// (PR-20 Task 2). Empty by default: subdomain resolution is off until a deployment opts in.
+    /// </summary>
+    public List<string> PlatformBaseDomains { get; init; } = [];
 }
 
 public sealed class PublicMenuProjectionBuilder(

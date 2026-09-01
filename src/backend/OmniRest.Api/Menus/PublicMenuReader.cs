@@ -14,7 +14,7 @@ public interface IPublicMenuReader
 }
 
 public sealed class PublicMenuReader(
-    IRestaurantResolver resolver,
+    IRestaurantContext restaurantContext,
     MenuDbContext dbContext,
     IMemoryCache cache,
     PublicMenuSnapshotSerializer serializer,
@@ -25,7 +25,10 @@ public sealed class PublicMenuReader(
 
     public async Task<PublicMenuReadResult?> ReadAsync(HostString host, CancellationToken cancellationToken)
     {
-        var restaurant = await resolver.ResolveAsync(host, cancellationToken);
+        // Resolving through the request context binds the tenant scope, so every query below — and
+        // every query any caller makes afterwards — is filtered to this restaurant automatically.
+        // The context memoizes, so the three public endpoints that each call this resolve only once.
+        var restaurant = await restaurantContext.ResolveFromHostAsync(host, cancellationToken);
         if (restaurant is null)
         {
             return null;

@@ -89,3 +89,4 @@
 @media (prefers-reduced-motion: reduce) { .nightfall-v1__galleryImage { transition: none; } .nightfall-v1__gallerySkeleton { background: #1d1e16; animation: none; } }
 @media (max-width: 48rem) { .nightfall-v1__galleryGrid { grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); } }
 @media (forced-colors: active) { .nightfall-v1__galleryThumbButton, .nightfall-v1__lightboxNavButton { border: 2px solid ButtonText; } }
+.nightfall-v1__brandLogo { display: inline-block; width: 2.4rem; height: 2.4rem; margin-right: .55rem; border-radius: 50%; object-fit: cover; vertical-align: middle; }

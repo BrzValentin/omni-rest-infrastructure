@@ -12,6 +12,9 @@ const enCa = {
   unknownRestaurantTitle: "Restaurant not found",
   unknownRestaurantBody: "We could not find a public restaurant for this address.",
   errorTitle: "We could not load the menu",
+  pageErrorTitle: "We could not load this page",
+  /** Shown wherever a restaurant name is genuinely unknown. Never a brand — no tenant is named here. */
+  unnamedRestaurant: "Restaurant",
   errorBody: "Please try again. If the problem continues, check back a little later.",
   retry: "Try again",
   retrying: "Trying again…",

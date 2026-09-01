@@ -167,24 +167,6 @@ All public pages must use only this restaurant's contact information.
 - Updating one restaurant's contact information does not affect others.
 - Public pages always display the correct contact information.
 
-# Task 10. Restaurant Administration
-
-## Objective
-Provide the foundation for managing multiple restaurants.
-
-### Requirements
-- Implement restaurant CRUD functionality.
-- Create new restaurants.
-- Update restaurant configuration.
-- Disable restaurants.
-- Delete restaurants (subject to defined business rules).
-
-### Acceptance Criteria
-- Administrators can create new restaurants.
-- Newly created restaurants become available to the platform.
-- Disabled restaurants are no longer served.
-- Full CRUD functionality works as expected.
-
 # Task 11. Multi-Restaurant Validation
 
 ## Objective
@@ -222,5 +204,4 @@ Create a comprehensive integration test suite.
 |7|Independent Menus|Independent restaurant menus|
 |8|Independent Gallery|Independent restaurant galleries|
 |9|Independent Contact Information|Restaurant-specific contact information|
-|10|Restaurant Administration|Restaurant management (CRUD)|
 |11|Multi-Restaurant Validation|End-to-end validation of the multi-restaurant platform|

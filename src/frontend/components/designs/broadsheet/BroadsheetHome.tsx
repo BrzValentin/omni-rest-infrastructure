@@ -1,3 +1,4 @@
+import { message } from "@/lib/menu-messages";
 import type { WebsiteDesignHomeProps } from "../design-contract";
 import { DesignGallery } from "../shared/DesignGallery";
 import {
@@ -17,14 +18,14 @@ import { createDesignClassNames } from "../shared/designClassNames";
 const styles = createDesignClassNames("broadsheet-v1");
 
 export default function BroadsheetHome({ restaurant }: WebsiteDesignHomeProps) {
-  const name = restaurant?.name ?? "Omni REST";
+  const name = restaurant?.name ?? message("unnamedRestaurant");
   const gallery = restaurant?.gallery ?? [];
   return (
     <div className={styles.shell} data-website-design="broadsheet-v1">
       <DesignSkipLink className={styles.skipLink} />
       <header className={styles.header}>
         <p className={styles.edition}>Today&apos;s edition</p>
-        <HomeLink className={styles.brand} restaurantName={name} />
+        <HomeLink className={styles.brand} restaurantName={name} logo={restaurant?.logo} logoClassName={styles.brandLogo} />
         <nav aria-label="Primary navigation"><MenuNavigationLink className={styles.navLink} /></nav>
       </header>
       <main className={styles.homeMain} id="main-content">

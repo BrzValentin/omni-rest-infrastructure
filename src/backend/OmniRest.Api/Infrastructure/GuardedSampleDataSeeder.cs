@@ -19,7 +19,20 @@ public static class GuardedSampleDataSeeder
     public static readonly Guid LargeRestaurantId = Id("restaurant:large");
 
     private static readonly DateTimeOffset SeedTime = new(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
-    private static readonly string[] SeedMediaFileNames = ["poutine-640.webp", "alternate-private.webp"];
+    /// <summary>
+    /// Seed media, mapped to the restaurant that owns it. Phase 7 serves media only from the owning
+    /// restaurant's directory, so the fixture has to use the real per-tenant layout rather than a shared
+    /// "seed" folder — otherwise the sample data would be the one thing the tenant check cannot express.
+    /// </summary>
+    private static readonly (string FileName, Guid RestaurantId)[] SeedMedia =
+    [
+        ("poutine-640.webp", OrdinaryRestaurantId),
+        ("alternate-private.webp", AlternateRestaurantId)
+    ];
+
+    /// <summary>The public URL of a seeded media file, in the same shape <c>LocalMediaStorage</c> writes.</summary>
+    private static string SeedMediaUrl(Guid restaurantId, string fileName) =>
+        $"/media/uploads/{restaurantId:N}/{fileName}";
 
     public static async Task SeedAsync(IServiceProvider services, IHostEnvironment environment, bool large)
     {
@@ -97,7 +110,7 @@ public static class GuardedSampleDataSeeder
             RestaurantId = restaurant.Id,
             MediaAssetId = media.Id,
             MediaAsset = media,
-            Url = "/media/uploads/seed/poutine-640.webp",
+            Url = SeedMediaUrl(OrdinaryRestaurantId, "poutine-640.webp"),
             Width = 640,
             Height = 480
         });
@@ -151,7 +164,7 @@ public static class GuardedSampleDataSeeder
                 RestaurantId = restaurant.Id,
                 MediaAssetId = asset.Id,
                 MediaAsset = asset,
-                Url = "/media/uploads/seed/poutine-640.webp",
+                Url = SeedMediaUrl(OrdinaryRestaurantId, "poutine-640.webp"),
                 Width = 640,
                 Height = 480,
                 StorageKey = null,
@@ -222,7 +235,7 @@ public static class GuardedSampleDataSeeder
             RestaurantId = restaurant.Id,
             MediaAssetId = privateMedia.Id,
             MediaAsset = privateMedia,
-            Url = "/media/uploads/seed/alternate-private.webp",
+            Url = SeedMediaUrl(AlternateRestaurantId, "alternate-private.webp"),
             Width = 640,
             Height = 480
         });
@@ -237,11 +250,12 @@ public static class GuardedSampleDataSeeder
         var storage = services.GetRequiredService<IOptions<LocalMediaStorageOptions>>().Value;
         var mediaRoot = storage.LocalRoot ?? throw new InvalidOperationException("Seed media requires a configured local media root.");
         var sourceRoot = Path.Combine(environment.ContentRootPath, "seed-media");
-        var destinationRoot = Path.Combine(mediaRoot, "seed");
-        Directory.CreateDirectory(destinationRoot);
-
-        foreach (var fileName in SeedMediaFileNames)
+        foreach (var (fileName, restaurantId) in SeedMedia)
         {
+            // One directory per owning restaurant, matching LocalMediaStorage's real layout so the
+            // Phase 7 tenant check applies to seeded media exactly as it does to uploads.
+            var destinationRoot = Path.Combine(mediaRoot, restaurantId.ToString("N"));
+            Directory.CreateDirectory(destinationRoot);
             var sourcePath = Path.Combine(sourceRoot, fileName);
             if (!File.Exists(sourcePath))
             {
@@ -301,6 +315,9 @@ public static class GuardedSampleDataSeeder
         {
             Id = id,
             Name = name,
+            // Every sample host is "<label>.localhost", so the leading label doubles as the slug and
+            // gives the Phase 7 subdomain strategy something real to resolve against in development.
+            Slug = host.Split('.')[0],
             CreatedAt = SeedTime,
             UpdatedAt = SeedTime,
             Settings = new RestaurantSettingsEntity

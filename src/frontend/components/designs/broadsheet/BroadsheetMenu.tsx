@@ -42,7 +42,7 @@ export default function BroadsheetMenu({ site }: WebsiteDesignMenuProps) {
       <DesignSkipLink className={styles.skipLink} />
       <header className={styles.header}>
         <p className={styles.edition}>Menu edition</p>
-        <HomeLink className={styles.brand} restaurantName={site.restaurantName} />
+        <HomeLink className={styles.brand} restaurantName={site.restaurantName} logo={site.restaurant?.logo} logoClassName={styles.brandLogo} />
         <nav aria-label="Primary navigation"><MenuNavigationLink className={styles.navLink} /></nav>
       </header>
       <main className={styles.menuMain} id="main-content" lang={site.locale}>

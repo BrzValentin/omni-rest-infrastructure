@@ -20,7 +20,14 @@ export default defineConfig({
       // and would otherwise report 0% for a structural reason rather than a quality one. Their
       // testable logic is deliberately factored out: `lib/site-origin.ts` holds the host and URL
       // rules that `lib/seo.ts` merely wraps.
-      exclude: ["lib/menu-api.ts", "lib/server-api.ts", "lib/seo.ts", "lib/public-data.ts"],
+      exclude: [
+        "lib/menu-api.ts",
+        "lib/server-api.ts",
+        "lib/seo.ts",
+        "lib/public-data.ts",
+        "lib/tenant-document.ts",
+        "lib/admin-data.ts",
+      ],
       thresholds: {
         lines: 80,
         functions: 80,

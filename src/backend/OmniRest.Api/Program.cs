@@ -30,6 +30,10 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.Configure<PublicMenuOptions>(builder.Configuration.GetSection(PublicMenuOptions.SectionName));
 builder.Services.AddDbContext<MenuDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("MenuDatabase")));
+// Scoped per request: the tenant scope drives MenuDbContext's global query filters, and the restaurant
+// context is the single place a request establishes which restaurant it acts for (PR-20 Tasks 3 and 4).
+builder.Services.AddScoped<ITenantScope, TenantScope>();
+builder.Services.AddScoped<IRestaurantContext, RestaurantContext>();
 builder.Services.AddScoped<IRestaurantResolver, RestaurantResolver>();
 builder.Services.AddScoped<IPublicMenuReader, PublicMenuReader>();
 builder.Services.AddSingleton<PublicMenuSnapshotSerializer>();
@@ -41,6 +45,7 @@ builder.Services.AddScoped<IRestaurantManagementService>(provider => provider.Ge
 builder.Services.AddScoped<IMenuManagementService>(provider => provider.GetRequiredService<RestaurantManagementService>());
 builder.Services.AddScoped<IGalleryManagementService>(provider => provider.GetRequiredService<RestaurantManagementService>());
 builder.Services.AddScoped<IMediaAssetService, MediaAssetService>();
+builder.Services.AddScoped<IRestaurantConfigurationService, RestaurantConfigurationService>();
 builder.Services.AddSingleton<IGalleryThumbnailFactory, GalleryThumbnailFactory>();
 builder.Services.AddScoped<IInProcessPublicationDispatcher, InProcessPublicationDispatcher>();
 builder.Services.AddSingleton<IPublicationFailurePolicy, NeverFailPublicationPolicy>();
@@ -134,12 +139,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var app = builder.Build();
 
 Directory.CreateDirectory(mediaRoot);
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(mediaRoot),
-    RequestPath = mediaStorageOptions.PublicPathBase,
-    ServeUnknownFileTypes = false
-});
+
+// Media is served only to the restaurant that owns it (PR-20 Task 8). This replaces the blanket
+// static-file mount that previously exposed every tenant's files, drafts included, to any caller.
+app.UseTenantScopedMedia(mediaStorageOptions.PublicPathBase, mediaRoot);
 
 var explicitlyTrustedProxies = proxyConfiguration.KnownProxies.Select(IPAddress.Parse).ToHashSet();
 var explicitlyTrustedNetworks = proxyConfiguration.KnownNetworks.Select(System.Net.IPNetwork.Parse).ToArray();

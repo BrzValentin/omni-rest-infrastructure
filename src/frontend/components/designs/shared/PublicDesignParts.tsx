@@ -3,7 +3,8 @@ import Link from "next/link";
 
 import { MenuLink } from "@/components/MenuLink";
 import { PhoneLink } from "@/components/phone/PhoneLink";
-import type { PublicRestaurant } from "@/lib/restaurant-contract";
+import { brandLogoVariant } from "@/lib/brand";
+import type { PublicImage, PublicRestaurant } from "@/lib/restaurant-contract";
 
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -11,8 +12,42 @@ export function DesignSkipLink({ className }: Readonly<{ className: string }>) {
   return <a className={className} href="#main-content">Skip to content</a>;
 }
 
-export function HomeLink({ className, restaurantName }: Readonly<{ className: string; restaurantName: string }>) {
-  return <Link className={className} href="/" prefetch={false} aria-label={`${restaurantName} home`}>{restaurantName}</Link>;
+/**
+ * The brand link every design puts in its header.
+ *
+ * The published logo is rendered here rather than in each design so all five pick it up from one
+ * place, keeping branding restaurant-specific (PR-20 Task 6) without touching any design's visual
+ * character — each supplies its own class for the mark. The logo is decorative: the restaurant name
+ * sits beside it in the same link, so a second announcement of the same name would only add noise.
+ * Snapshots published before Phase 6 carry `logo: null` and simply render the name alone.
+ */
+export function HomeLink({
+  className,
+  restaurantName,
+  logo,
+  logoClassName,
+}: Readonly<{
+  className: string;
+  restaurantName: string;
+  logo?: PublicImage | null;
+  logoClassName?: string;
+}>) {
+  const variant = brandLogoVariant(logo);
+  return (
+    <Link className={className} href="/" prefetch={false} aria-label={`${restaurantName} home`}>
+      {variant ? (
+        <Image
+          className={logoClassName}
+          src={variant.url}
+          width={variant.width}
+          height={variant.height}
+          sizes="3rem"
+          alt=""
+        />
+      ) : null}
+      <span>{restaurantName}</span>
+    </Link>
+  );
 }
 
 export function MenuNavigationLink({ className }: Readonly<{ className: string }>) {
