@@ -167,13 +167,22 @@ jobs:
       # re-printed at the very end of the step list where it always shows. An earlier attempt read
       # Playwright's per-test error-context.md files; those are not written by this version, which is why
       # this reads the captured stdout instead.
+      # Written to the job summary, not just stdout. The summary renders on the run page as markdown and
+      # needs no expanding, which matters because the two earlier attempts at this were both defeated by
+      # the UI: a ::group:: wrapper collapses by default, and a step's log only renders when expanded.
       - name: Show failure details
         if: failure()
         working-directory: src/frontend
         run: |
-          echo "::group::Playwright output (last 200 lines)"
-          tail -n 200 playwright-output.log || echo "no output captured"
-          echo "::endgroup::"
+          {
+            echo '## Playwright failures'
+            echo
+            echo '```'
+            tail -n 200 playwright-output.log 2>/dev/null || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo '--- last 200 lines ---'
+          tail -n 200 playwright-output.log 2>/dev/null || echo 'no output captured'
 
       # Runs the @perf spec, then scripts/perf-report.mjs, which EXITS NON-ZERO when a budget in
       # specifications/phase-8/performance-budget.md is exceeded. This is the PR-23 Task 15 gate.
