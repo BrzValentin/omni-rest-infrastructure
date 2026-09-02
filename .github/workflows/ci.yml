@@ -157,20 +157,22 @@ jobs:
 
       # playwright.config.ts chains three web servers: the API (docker compose + migrations + seed),
       # the fixture proxy, and `next start`.
+      # Captured to a file as well as the log. `shell: bash` runs with -eo pipefail, so the tee does not
+      # swallow a non-zero exit.
       - name: End-to-end tests
         working-directory: src/frontend
-        run: npm run test:e2e
+        run: npm run test:e2e 2>&1 | tee playwright-output.log
 
-      # GitHub's log viewer virtualises long logs and the artifact API needs a token, so a Playwright
-      # failure buried at line ~1000 of a 5-browser run is effectively unreadable after the fact. Playwright
-      # writes a short error-context.md per failed test; printing those puts the actual assertion at the
-      # END of the log, where it always renders.
+      # The tail is what matters and it is what the log viewer is least likely to render, so it is
+      # re-printed at the very end of the step list where it always shows. An earlier attempt read
+      # Playwright's per-test error-context.md files; those are not written by this version, which is why
+      # this reads the captured stdout instead.
       - name: Show failure details
         if: failure()
         working-directory: src/frontend
         run: |
-          echo "::group::Playwright error contexts"
-          find test-results -name 'error-context.md' -print -exec sed -n '1,80p' {} \; 2>/dev/null || echo "no error-context.md written"
+          echo "::group::Playwright output (last 200 lines)"
+          tail -n 200 playwright-output.log || echo "no output captured"
           echo "::endgroup::"
 
       # Runs the @perf spec, then scripts/perf-report.mjs, which EXITS NON-ZERO when a budget in
