@@ -368,13 +368,36 @@ async function assertNoSeriousAccessibilityViolations(page: Page) {
   ).toEqual([]);
 }
 
+/**
+ * Asserted from the DOM rather than from resource timing.
+ *
+ * Phase 8 gave `/design-previews/*` an immutable one-year cache. This test navigates four times inside
+ * one page context and checks after each, so from the second navigation on the stylesheet is served
+ * from cache and contributes no resource-timing entry at all — which silently turned the old
+ * network-only assertion into "expected one entry, received none" on every browser.
+ *
+ * What the test actually cares about is that exactly one design stylesheet is referenced and that it
+ * belongs to the selected design. The DOM answers that truthfully whether or not the bytes crossed the
+ * network. Resource timing is kept, but only as a leak check, and as a subset rather than an equality:
+ * a cache hit legitimately produces no entry, while another design's stylesheet appearing there would
+ * be a real failure however it was served.
+ */
 async function assertSelectedStylesheet(page: Page, designId: string) {
-  const stylesheets = await page.evaluate(() =>
+  const selected = `/design-previews/styles/${designId}.css`;
+
+  const linked = await page.evaluate(() =>
+    [...document.querySelectorAll('link[rel="stylesheet"]')]
+      .map((link) => new URL((link as HTMLLinkElement).href).pathname)
+      .filter((path) => path.startsWith("/design-previews/styles/")),
+  );
+  expect(linked).toEqual([selected]);
+
+  const fetched = await page.evaluate(() =>
     performance.getEntriesByType("resource")
       .map((entry) => new URL(entry.name).pathname)
       .filter((path) => path.startsWith("/design-previews/styles/")),
   );
-  expect(stylesheets).toEqual([`/design-previews/styles/${designId}.css`]);
+  expect(fetched.filter((path) => path !== selected)).toEqual([]);
 }
 
 /**
