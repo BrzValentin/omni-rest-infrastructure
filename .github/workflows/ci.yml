@@ -130,11 +130,15 @@ jobs:
         working-directory: src/frontend
         run: npm ci
 
+      # ALL browsers, not just chromium: playwright.config.ts declares five projects (chromium, firefox,
+      # webkit, and two chromium viewports) and `test:e2e` runs every one of them. Installing chromium
+      # alone leaves firefox and webkit missing, which fails the run before a single assertion executes.
+      #
       # `--with-deps` is what makes this runnable here and not on a developer's WSL2 box, where the
-      # browser's system packages need password sudo.
+      # browsers' system packages need password sudo.
       - name: Install Playwright browsers
         working-directory: src/frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps
 
       # e2e/start-backend.mjs invokes `dotnet ef`, which is a LOCAL tool pinned in
       # .config/dotnet-tools.json. Without a restore the command does not exist on the runner.

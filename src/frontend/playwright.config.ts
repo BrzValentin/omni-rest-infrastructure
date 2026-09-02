@@ -5,7 +5,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  reporter: [["list"]],
+  // `list` is the readable one while working. On CI a failure is only ever read after the fact, from an
+  // artifact, so an HTML report is added there — without it `playwright-report/` never exists and the
+  // workflow's upload step has nothing to collect.
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL: "http://menu.localhost:3000",
     screenshot: "only-on-failure",
