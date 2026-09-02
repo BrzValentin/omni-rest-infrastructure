@@ -161,11 +161,31 @@ jobs:
         working-directory: src/frontend
         run: npm run test:e2e
 
+      # GitHub's log viewer virtualises long logs and the artifact API needs a token, so a Playwright
+      # failure buried at line ~1000 of a 5-browser run is effectively unreadable after the fact. Playwright
+      # writes a short error-context.md per failed test; printing those puts the actual assertion at the
+      # END of the log, where it always renders.
+      - name: Show failure details
+        if: failure()
+        working-directory: src/frontend
+        run: |
+          echo "::group::Playwright error contexts"
+          find test-results -name 'error-context.md' -print -exec sed -n '1,80p' {} \; 2>/dev/null || echo "no error-context.md written"
+          echo "::endgroup::"
+
       # Runs the @perf spec, then scripts/perf-report.mjs, which EXITS NON-ZERO when a budget in
       # specifications/phase-8/performance-budget.md is exceeded. This is the PR-23 Task 15 gate.
       - name: Performance budget gate
         working-directory: src/frontend
         run: npm run test:perf
+
+      - name: Upload raw test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: src/frontend/test-results
+          if-no-files-found: ignore
 
       - name: Upload performance report
         if: always()
