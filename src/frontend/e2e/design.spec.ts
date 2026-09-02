@@ -268,7 +268,23 @@ async function signIn(page: Page) {
   await page.goto("/admin/restaurant");
   await page.getByLabel("Email").fill("owner@prairietable.test");
   await page.getByLabel("Password", { exact: true }).fill("correct horse battery staple");
-  await page.getByRole("button", { name: "Sign In" }).click();
+
+  // The login response is captured so a failure says WHY. Without it a rejected sign-in only shows
+  // "expected /admin/restaurant, received /admin/login", which is the same symptom for a rate limit, a
+  // wrong credential, and an unavailable auth service — three very different problems.
+  const [loginResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/v1/auth/login"), { timeout: 15_000 })
+      .catch(() => null),
+    page.getByRole("button", { name: "Sign In" }).click(),
+  ]);
+
+  if (!/\/admin\/restaurant$/.test(page.url())) {
+    const status = loginResponse?.status() ?? "no response";
+    const body = loginResponse ? await loginResponse.text().catch(() => "") : "";
+    const shown = await page.getByRole("alert").allTextContents().catch(() => []);
+    await expect(page, `sign-in did not reach the editor. Login responded ${status}: ${body.slice(0, 300)}. On-screen: ${shown.join(" | ")}`)
+      .toHaveURL(/\/admin\/restaurant$/);
+  }
   await expect(page).toHaveURL(/\/admin\/restaurant$/);
 }
 
