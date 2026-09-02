@@ -265,7 +265,13 @@ test("menu keyboard navigation honors reduced motion", async ({ page }) => {
 });
 
 async function signIn(page: Page) {
-  await page.goto("/admin/restaurant");
+  // Absolute, and on admin.localhost specifically. A relative path resolves against each project's
+  // baseURL — menu.localhost for most, 127.0.0.1 for webkit — and api-proxy forwards both of those to
+  // the REAL backend, which has no owner seeded with this fixture password. The rest of this file
+  // already talks to admin.localhost explicitly for its API helpers; only sign-in did not, so it asked
+  // the wrong server to authenticate and was told, correctly, that the credentials were invalid.
+  // restaurant.spec.ts has always used the absolute form here.
+  await page.goto("http://admin.localhost:3000/admin/restaurant");
   await page.getByLabel("Email").fill("owner@prairietable.test");
   await page.getByLabel("Password", { exact: true }).fill("correct horse battery staple");
 
