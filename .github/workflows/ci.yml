@@ -136,7 +136,18 @@ jobs:
         working-directory: src/frontend
         run: npx playwright install --with-deps chromium
 
-      - name: Build
+      # e2e/start-backend.mjs invokes `dotnet ef`, which is a LOCAL tool pinned in
+      # .config/dotnet-tools.json. Without a restore the command does not exist on the runner.
+      - name: Restore .NET local tools
+        run: dotnet tool restore
+
+      # Every dotnet call in e2e/start-backend.mjs passes --no-build, and none passes a configuration,
+      # so they all expect Debug output to already exist. The backend job builds Release on a different
+      # runner, so its output is not available here — this job has to build for itself.
+      - name: Build backend (Debug, for the e2e harness)
+        run: dotnet build src/backend/OmniRest.Api/OmniRest.Api.csproj
+
+      - name: Build frontend
         working-directory: src/frontend
         run: npm run build
 

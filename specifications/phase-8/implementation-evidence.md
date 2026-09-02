@@ -161,7 +161,7 @@ This section is the point of this document.
 | `e2e/design.spec.ts`, `menu.spec.ts`, `seo.spec.ts` after Phase 8 edits | **Not re-run** | Same |
 | `npm run test:perf` | **Never run end to end** | Needs Playwright plus the `large-menu.localhost` fixture stack |
 | Lighthouse ≥ 90 (PR-23 Task 13) | **Configured, never executed** | Same |
-| `.github/workflows/ci.yml` (PR-23 Task 15) | **Authored, never executed** | The repository has never had CI. Validated only by a real YAML parse — 3 jobs, 23 steps, all valid |
+| `.github/workflows/ci.yml` (PR-23 Task 15) | **Executed — see §9** | Backend and frontend jobs pass on a runner; the e2e job needed two fixes |
 | PR-24 Task 12 success rate ≥ 95 % and satisfaction | **Not delivered** | Requires human participants. Not estimated, not fabricated. See `README.md` Ruling 6 |
 | Production performance monitoring (PR-23 Task 14) | **Collection implemented, production behaviour unverified** | Requires a deployment |
 
@@ -211,3 +211,32 @@ Recorded so whoever first runs these specs knows where to look, rather than assu
    needs a free slot, and that order is deliberate so a failure never loses the original.
 9. **`SSH.NET 2025.1.0`** in the test project carries a known high-severity advisory
    (GHSA-q939-rpr3-3284). Transitive, test-only, and unrelated to Phase 8 — tracked separately.
+
+## 9. First CI execution
+
+The workflow triggers on `feature/**`, so pushing this branch ran it for the first time in the
+repository's history — run **#1**, commit `f1d0e79`.
+
+| Job | Result |
+|---|---|
+| Backend (.NET) | **success** — 271/271 on the runner; Testcontainers provisioned PostgreSQL 18 without a `services:` block, as designed |
+| Frontend (Next.js) | **success** in 76 s — install, lint, typecheck, unit tests, build, design-asset isolation |
+| End-to-end and performance gates | **failure** after 1 m 28 s |
+
+The e2e job failed for two real defects in the workflow, both found by reading
+`e2e/start-backend.mjs` rather than from the log (GitHub's log API needs a token, and the annotation
+carried only `Process completed with exit code 1`):
+
+1. **`dotnet ef` was never available.** It is a *local* tool pinned in `.config/dotnet-tools.json`;
+   without `dotnet tool restore` the command does not exist on the runner.
+2. **The backend was never built in this job.** Every `dotnet` call in `e2e/start-backend.mjs` passes
+   `--no-build` and none passes a configuration, so all four expect **Debug** output to exist already.
+   The backend job builds **Release**, on a different runner, so its output is not reachable here.
+
+Both were fixed by adding `dotnet tool restore` and a Debug build of the API project ahead of the
+harness. The corrected workflow re-parses cleanly: 3 jobs, 25 steps, none invalid.
+
+**The failure is the point.** A CI file that had never run was carrying two latent defects that no
+amount of local YAML validation would have found — which is precisely why `README.md` Ruling 7 recorded
+it as *authored, not proven* rather than presenting it as a working gate. The e2e job's own verdict on
+the two new Playwright suites is still unknown: it failed before reaching them.
