@@ -161,7 +161,7 @@ This section is the point of this document.
 | `e2e/design.spec.ts`, `menu.spec.ts`, `seo.spec.ts` after Phase 8 edits | **Not re-run** | Same |
 | `npm run test:perf` | **Never run end to end** | Needs Playwright plus the `large-menu.localhost` fixture stack |
 | Lighthouse ≥ 90 (PR-23 Task 13) | **Configured, never executed** | Same |
-| `.github/workflows/ci.yml` (PR-23 Task 15) | **Executed — see §9** | Backend and frontend jobs pass on a runner; the e2e job needed two fixes |
+| `.github/workflows/ci.yml` (PR-23 Task 15) | **Executed — see §9** | Backend and frontend pass on a runner. The e2e job is non-blocking, so the perf gate runs but cannot fail a build: Task 15 is only partly met |
 | PR-24 Task 12 success rate ≥ 95 % and satisfaction | **Not delivered** | Requires human participants. Not estimated, not fabricated. See `README.md` Ruling 6 |
 | Production performance monitoring (PR-23 Task 14) | **Collection implemented, production behaviour unverified** | Requires a deployment |
 
@@ -240,3 +240,44 @@ harness. The corrected workflow re-parses cleanly: 3 jobs, 25 steps, none invali
 amount of local YAML validation would have found — which is precisely why `README.md` Ruling 7 recorded
 it as *authored, not proven* rather than presenting it as a working gate. The e2e job's own verdict on
 the two new Playwright suites is still unknown: it failed before reaching them.
+
+## 10. What eleven CI runs actually established
+
+The first CI in this repository's history ran against Phase 8. It took eleven runs to get a readable
+signal, and the breakdown of why is worth recording, because none of it was product code.
+
+**Backend and frontend passed on every single run** — 271/271 and 367/40 respectively, from run #1.
+
+Four defects were in the **workflow I wrote**, none discoverable without executing it:
+
+1. `dotnet ef` was never available — it is a local tool in `.config/dotnet-tools.json` and needs
+   `dotnet tool restore`.
+2. The backend was never built in the e2e job. Every `dotnet` call in `e2e/start-backend.mjs` passes
+   `--no-build` with no configuration, so all four expect **Debug** output; the backend job builds
+   Release, on a different runner.
+3. Only chromium was installed, while `playwright.config.ts` declares five projects and `test:e2e` runs
+   all of them — 230 tests, not 46.
+4. The log was unreadable. Five projects with the `list` reporter produce 1000+ lines, and GitHub's
+   viewer virtualises long logs — it renders roughly the first half, which is the half without the
+   failure summary. Two attempts to surface it were defeated by the UI rather than the shell (a
+   `::group::` collapses by default; a step's log renders only when expanded). The working answer was
+   the `dot` reporter plus writing the tail to `$GITHUB_STEP_SUMMARY`.
+
+Two defects were **pre-existing bugs in the e2e suite**, invisible because it had never run anywhere:
+
+5. `design.spec`'s `signIn` navigated to a *relative* `/admin/restaurant`, which resolves against each
+   project's baseURL — the public host — and asked the **real backend** to authenticate a password that
+   exists only in the fixtures. Every other admin navigation in the file had the same defect. Fixing
+   both took the suite from 33 passing to 57.
+6. `restaurant.spec` and `design.spec` share fixture state while `fullyParallel` runs them
+   concurrently; `mode: "serial"` orders tests within a file, not across files.
+
+Two diagnoses I stated confidently and got wrong, corrected in the commits that followed: the immutable
+cache header, and the login rate limiter. Both were plausible, neither was the cause. The DOM-based
+stylesheet assertion and the harness rate-limit ceiling were kept anyway — each is correct on its own
+terms — but they fixed nothing here.
+
+**Remaining, and explicitly out of Phase 8's scope:** the design-selection test needs a fixture endpoint
+that lists website designs, and the cross-file fixture-state collision needs either isolation or
+serialisation. Until those land, the e2e job is `continue-on-error` so a permanently red suite does not
+train everyone to ignore CI.
