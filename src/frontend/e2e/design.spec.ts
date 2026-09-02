@@ -1,6 +1,18 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+/**
+ * The owner portal in this suite lives on `admin.localhost`, which `e2e/api-proxy.mjs` serves from its
+ * admin fixture. Every other host — `menu.localhost` for most projects, `127.0.0.1` for webkit — is
+ * forwarded to the real backend instead.
+ *
+ * That distinction has to be explicit here. A relative `page.goto("/admin/...")` resolves against the
+ * project's baseURL, so it lands on the public host, where the session cookie set during sign-in does
+ * not apply and the fixture's seeded owner does not exist. Public pages below deliberately keep using
+ * the relative form, because those genuinely belong to the visitor-facing host.
+ */
+const ADMIN_ORIGIN = "http://admin.localhost:3000";
+
 const designs = [
   {
     id: "quiet-elegance-v1",
@@ -42,7 +54,7 @@ for (const design of designs) {
     ]) {
       await page.setViewportSize(viewport);
 
-      await page.goto(`/admin/design-preview/${design.id}/home`);
+      await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/${design.id}/home`);
       await expect(page.locator(`[data-website-design="${design.id}"]`)).toBeVisible();
       await expect(page.getByRole("heading", { level: 1, name: "Prairie Table" })).toBeVisible();
       await assertNoHorizontalOverflow(page, `${design.name} Home ${viewport.label}`);
@@ -56,7 +68,7 @@ for (const design of designs) {
         );
       }
 
-      await page.goto(`/admin/design-preview/${design.id}/menu`);
+      await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/${design.id}/menu`);
       await expect(page.locator(`[data-website-design="${design.id}"]`)).toBeVisible();
       await expect(page.getByRole("heading", { name: "Prairie Poutine" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Desserts" })).toBeVisible();
@@ -80,14 +92,14 @@ test("all designs wrap long content and preserve minimal-content states", async 
 
   await setContentMode(page, "long");
   for (const design of designs) {
-    await page.goto(`/admin/design-preview/${design.id}/home`);
+    await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/${design.id}/home`);
     await expect(page.getByRole("heading", {
       level: 1,
       name: "The Prairie Table and Northern Harvest Dining Room",
     })).toBeVisible();
     await assertNoHorizontalOverflow(page, `${design.name} long Home`);
 
-    await page.goto(`/admin/design-preview/${design.id}/menu`);
+    await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/${design.id}/menu`);
     await expect(page.getByRole("heading", {
       name: "Crispy Prairie Potato Poutine with Bothwell Cheese Curds and House Gravy",
     })).toBeVisible();
@@ -96,11 +108,11 @@ test("all designs wrap long content and preserve minimal-content states", async 
 
   await setContentMode(page, "minimal");
   for (const design of designs) {
-    await page.goto(`/admin/design-preview/${design.id}/home`);
+    await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/${design.id}/home`);
     await expect(page.getByRole("heading", { level: 1, name: "M" })).toBeVisible();
     await assertNoHorizontalOverflow(page, `${design.name} minimal Home`);
 
-    await page.goto(`/admin/design-preview/${design.id}/menu`);
+    await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/${design.id}/menu`);
     await expect(page.getByRole("heading", { level: 2, name: "Menu coming soon" })).toBeVisible();
     await expect(page.getByRole("link", { name: /Call|Directions/ })).toHaveCount(0);
     await assertNoHorizontalOverflow(page, `${design.name} minimal Menu`);
@@ -120,7 +132,7 @@ test("design selection is keyboard-safe and publication changes the public Home 
     }
   });
 
-  await page.goto("/admin/design");
+  await page.goto(`${ADMIN_ORIGIN}/admin/design`);
   await expect(page.getByRole("heading", { name: "Choose a design" })).toBeVisible();
   for (const { name } of designs) {
     await expect(page.getByRole("heading", { name, level: 3 })).toBeVisible();
@@ -250,7 +262,7 @@ test("menu keyboard navigation honors reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await signIn(page);
   await setContentMode(page, "standard");
-  await page.goto("/admin/design-preview/quiet-elegance-v1/menu");
+  await page.goto(`${ADMIN_ORIGIN}/admin/design-preview/quiet-elegance-v1/menu`);
 
   const desserts = page.getByRole("link", { name: "Desserts" });
   await desserts.focus();
@@ -271,7 +283,7 @@ async function signIn(page: Page) {
   // already talks to admin.localhost explicitly for its API helpers; only sign-in did not, so it asked
   // the wrong server to authenticate and was told, correctly, that the credentials were invalid.
   // restaurant.spec.ts has always used the absolute form here.
-  await page.goto("http://admin.localhost:3000/admin/restaurant");
+  await page.goto(`${ADMIN_ORIGIN}/admin/restaurant`);
   await page.getByLabel("Email").fill("owner@prairietable.test");
   await page.getByLabel("Password", { exact: true }).fill("correct horse battery staple");
 
