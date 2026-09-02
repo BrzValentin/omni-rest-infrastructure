@@ -51,7 +51,7 @@ for (const design of designs) {
       if (viewport.label === "desktop") {
         await assertSelectedRendererChunk(
           page,
-          design.homeMarker,
+          design.id,
           designs.map(({ homeMarker }) => homeMarker),
         );
       }
@@ -66,7 +66,7 @@ for (const design of designs) {
       if (viewport.label === "desktop") {
         await assertSelectedRendererChunk(
           page,
-          design.menuMarker,
+          design.id,
           designs.map(({ menuMarker }) => menuMarker),
         );
       }
@@ -377,9 +377,16 @@ async function assertSelectedStylesheet(page: Page, designId: string) {
   expect(stylesheets).toEqual([`/design-previews/styles/${designId}.css`]);
 }
 
+/**
+ * Phase 8 moved the design renderers back across the server boundary, which inverts what this proves.
+ * It used to assert the selected design's markup was in the downloaded JavaScript and the other four
+ * were not. Now NO design markup may reach the browser at all, while the selected design must still be
+ * the one in the DOM. That is the stronger claim: the old assertion would still pass if a design were
+ * re-clientified into its own chunk, and this one will not.
+ */
 async function assertSelectedRendererChunk(
   page: Page,
-  selectedMarker: string,
+  selectedDesignId: string,
   rendererMarkers: readonly string[],
 ) {
   const loadedJavascript = await page.evaluate(async () => {
@@ -393,8 +400,8 @@ async function assertSelectedRendererChunk(
       }),
     )).join("\n");
   });
-  expect(loadedJavascript).toContain(selectedMarker);
   for (const marker of rendererMarkers) {
-    if (marker !== selectedMarker) expect(loadedJavascript).not.toContain(marker);
+    expect(loadedJavascript).not.toContain(marker);
   }
+  await expect(page.locator(`[data-website-design="${selectedDesignId}"]`)).toHaveCount(1);
 }

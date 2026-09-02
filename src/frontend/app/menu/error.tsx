@@ -1,39 +1,32 @@
 "use client";
 
-import { useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { PublicShell } from "@/components/PublicShell";
+import { StateCard, useReportedDigest } from "@/components/state/StateCard";
 import { message } from "@/lib/menu-messages";
 
-export default function MenuError({ reset }: Readonly<{ error: Error & { digest?: string }; reset: () => void }>) {
-  const [retrying, startTransition] = useTransition();
-  const retryStarted = useRef(false);
+/**
+ * Menu error boundary. Unlike the root boundary this one keeps `PublicShell`: reaching `/menu` means
+ * the tenant resolved, so the chrome has a restaurant to belong to and the reader keeps their way out.
+ */
+export default function MenuError({ error, reset }: Readonly<{ error: Error & { digest?: string }; reset: () => void }>) {
   const router = useRouter();
+  useReportedDigest(error);
 
   return (
     <PublicShell>
       <main className="publicMenuMain" id="main-content">
-        <section className="publicStateCard" aria-labelledby="menu-error-title">
-          <h1 id="menu-error-title">{message("errorTitle")}</h1>
-          <p>{message("errorBody")}</p>
-          <button
-            className="publicRetryButton"
-            disabled={retrying}
-            type="button"
-            onClick={() => {
-              if (!retryStarted.current) {
-                retryStarted.current = true;
-                startTransition(() => {
-                  router.refresh();
-                  reset();
-                });
-              }
-            }}
-          >
-            {retrying ? message("retrying") : message("retry")}
-          </button>
-        </section>
+        <StateCard
+          variant="error"
+          titleId="menu-error-title"
+          title={message("errorTitle")}
+          body={message("errorBody")}
+          onRetry={() => {
+            router.refresh();
+            reset();
+          }}
+        />
       </main>
     </PublicShell>
   );

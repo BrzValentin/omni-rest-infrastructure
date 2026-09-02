@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { BrowserApiError, uploadMedia } from "@/lib/browser-api";
 import {
@@ -16,6 +15,9 @@ import {
   type DishAvailability,
 } from "@/lib/menu-admin-contract";
 import type { AdminMediaAsset } from "@/lib/restaurant-contract";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { DraftStatusBar } from "./DraftStatusBar";
+import { fieldErrorHelpers } from "./FieldError";
 import { messageForCodes, useMenuDraft } from "./useMenuDraft";
 import styles from "@/app/admin/admin.module.css";
 
@@ -45,87 +47,19 @@ function formFor(dish: AdminDish): DishForm {
   };
 }
 
-function DeleteDishDialog({ dish, onCancel, onConfirm }: {
-  dish: AdminDish;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    const background = Array.from(document.body.children)
-      .filter((element) => !element.contains(dialog))
-      .map((element) => ({
-        element: element as HTMLElement,
-        inert: element.hasAttribute("inert"),
-        ariaHidden: element.getAttribute("aria-hidden"),
-      }));
-    for (const item of background) {
-      item.element.setAttribute("inert", "");
-      item.element.setAttribute("aria-hidden", "true");
-    }
-    cancelRef.current?.focus();
-    return () => {
-      for (const item of background) {
-        if (!item.inert) item.element.removeAttribute("inert");
-        if (item.ariaHidden === null) item.element.removeAttribute("aria-hidden");
-        else item.element.setAttribute("aria-hidden", item.ariaHidden);
-      }
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, []);
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? []);
-    if (focusable.length === 0) return;
-    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
-    const nextIndex = event.shiftKey
-      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
-      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
-    event.preventDefault();
-    focusable[nextIndex].focus();
-  }
-
-  return createPortal(
-    <div className={styles.modalBackdrop}>
-      <div
-        ref={dialogRef}
-        className={styles.confirmation}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-dish-title"
-        aria-describedby="delete-dish-description"
-        onKeyDown={handleKeyDown}
-      >
-        <h3 id="delete-dish-title">Delete “{dish.name}”?</h3>
-        <p id="delete-dish-description">
-          {dish.name} disappears from the menu immediately. The record is kept for reporting, but visitors will no
-          longer see it. To hide a dish temporarily instead, set it to Unavailable.
-        </p>
-        <div className={styles.buttonRow}>
-          <button ref={cancelRef} className={styles.secondaryButton} type="button" onClick={onCancel}>Cancel</button>
-          <button className={styles.dangerButton} type="button" onClick={onConfirm}>Confirm delete</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export function DishManager({ initial, initialMedia }: { initial: AdminMenu; initialMedia: AdminMediaAsset[] }) {
-  const { menu, busy, notice, setNotice, conflict, fieldErrors, save } = useMenuDraft(initial);
+  const {
+    menu, busy, notice, setNotice, conflict, sessionExpired, fieldErrors, setDirty, save, retrySave,
+  } = useMenuDraft(initial);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initial.categories[0]?.id ?? "");
+  const [search, setSearch] = useState("");
   const [editingDishId, setEditingDishId] = useState<string | null>(null);
   const [form, setForm] = useState<DishForm>(() => emptyForm(initial.categories[0]?.id ?? ""));
+  // Per-row price edits, keyed by dish id, so a price can be corrected without opening the full
+  // dish form. `priceDishId` is the row whose price save came back invalid, which keeps the one
+  // `price` message beside the field that produced it instead of duplicating it on the form below.
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [priceDishId, setPriceDishId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdminDish | null>(null);
   const [mediaAssets, setMediaAssets] = useState(initialMedia);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -135,20 +69,17 @@ export function DishManager({ initial, initialMedia }: { initial: AdminMenu; ini
   const category = menu.categories.find((item) => item.id === selectedCategoryId) ?? menu.categories[0];
   const dishes = category?.dishes ?? [];
   const disabled = busy !== null;
+  const { errorFor, fieldA11y } = fieldErrorHelpers(fieldErrors, "dish-error", messageForCodes);
 
-  function errorFor(field: string) {
-    const text = messageForCodes(fieldErrors[field]);
-    if (!text) return null;
-    return <span className={styles.fieldError} id={`dish-error-${field}`}>{text}</span>;
-  }
-
-  function fieldA11y(field: string) {
-    return {
-      "data-error-field": field,
-      "aria-invalid": Boolean(fieldErrors[field]),
-      "aria-describedby": fieldErrors[field] ? `dish-error-${field}` : undefined,
-    };
-  }
+  // The filter is a client-side pass over the menu already in hand — the portal loads the whole
+  // draft menu — so it never asks the backend for anything and never touches the public site.
+  const query = search.trim().toLowerCase();
+  const filtering = query !== "";
+  const allDishes = menu.categories.flatMap((item) => item.dishes);
+  const visibleDishes = filtering
+    ? allDishes.filter((item) => item.name.toLowerCase().includes(query))
+    : dishes;
+  const categoryNames = new Map(menu.categories.map((item) => [item.id, item.name]));
 
   function body() {
     return {
@@ -197,6 +128,32 @@ export function DishManager({ initial, initialMedia }: { initial: AdminMenu; ini
     void save(`/api/v1/admin/menu/dishes/${dish.id}/availability`, "PATCH", { status }, "Dish availability");
   }
 
+  /**
+   * Saves one price through the dedicated price endpoint.
+   *
+   * Changing a price used to mean opening the whole dish form and re-submitting every field, which
+   * risked clobbering a description or a badge that had changed elsewhere in the meantime. The
+   * backend has carried a price-only endpoint — separately audited as `menu.dish.price_changed` —
+   * since the menu shipped; this is what finally calls it.
+   */
+  function savePrice(dish: AdminDish) {
+    const next = priceDrafts[dish.id];
+    if (next === undefined || next.trim() === "") return;
+    void (async () => {
+      setPriceDishId(dish.id);
+      const saved = await save(
+        `/api/v1/admin/menu/dishes/${dish.id}/price`, "PATCH", { price: Number(next) }, "Price");
+      if (!saved) return;
+      setPriceDrafts((current) => {
+        const remaining = { ...current };
+        delete remaining[dish.id];
+        return remaining;
+      });
+      setPriceDishId(null);
+      setNotice(`${dish.name} is now ${formatAdminPrice(Number(next).toFixed(2), menu.locale, menu.currency)}.`);
+    })();
+  }
+
   async function upload() {
     if (!uploadFile || uploadAltText.trim() === "") return;
     setNotice(null);
@@ -236,99 +193,159 @@ export function DishManager({ initial, initialMedia }: { initial: AdminMenu; ini
         <a className={styles.secondaryButton} href="/admin/restaurant/preview">Preview draft</a>
       </div>
 
-      <div className={styles.statusBar} role="status" aria-live="polite">
-        <span>Draft {menu.draftVersion}</span>
-        <span>Publication: {menu.publicationStatus?.status ?? "not started"}</span>
-        {notice && <strong>{notice}</strong>}
-        {conflict && <button type="button" onClick={() => window.location.reload()}>Reload latest</button>}
-      </div>
+      <DraftStatusBar
+        publication={menu.publicationStatus}
+        notice={notice}
+        conflict={conflict}
+        sessionExpired={sessionExpired}
+        onRetry={retrySave}
+        busy={disabled}
+      />
 
       <section className={styles.editorSection} aria-labelledby="dish-list-title">
         <h2 id="dish-list-title">Dishes in this category</h2>
-        <label>
-          Show category
-          <select
-            value={category?.id ?? ""}
-            onChange={(event) => setSelectedCategoryId(event.target.value)}
-          >
-            {menu.categories.map((item) => (
-              <option key={item.id} value={item.id}>{item.name} ({item.dishCount})</option>
-            ))}
-          </select>
-        </label>
-        {dishes.length === 0 && <p>No dishes in this category yet. Add the first one below.</p>}
+        <div className={styles.inlineForm}>
+          <label>
+            Show category
+            <select
+              value={category?.id ?? ""}
+              onChange={(event) => setSelectedCategoryId(event.target.value)}
+            >
+              {menu.categories.map((item) => (
+                <option key={item.id} value={item.id}>{item.name} ({item.dishCount})</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Search dishes by name
+            <input
+              type="search"
+              value={search}
+              placeholder="poutine"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          {filtering && (
+            <button className={styles.secondaryButton} type="button" onClick={() => setSearch("")}>
+              Clear search
+            </button>
+          )}
+        </div>
+        {filtering && (
+          <p>
+            {visibleDishes.length === 0
+              ? `No dish matches “${search.trim()}”.`
+              : `${visibleDishes.length} of ${allDishes.length} dishes match “${search.trim()}”, `
+                + "across every category. Clear the search to change the order."}
+          </p>
+        )}
+        {!filtering && dishes.length === 0 && <p>No dishes in this category yet. Add the first one below.</p>}
         <ol className={styles.categoryList}>
-          {dishes.map((dish, index) => (
-            <li key={dish.id} className={styles.categoryRow}>
-              {dish.media?.variants[0] && (
-                <Image
-                  unoptimized
-                  loader={({ src }) => src}
-                  className={styles.dishThumbnail}
-                  src={dish.media.variants[0].url}
-                  width={dish.media.variants[0].width}
-                  height={dish.media.variants[0].height}
-                  alt={dish.media.altText}
-                />
-              )}
-              <span className={styles.categoryMeta}>
-                <strong>{dish.name}</strong>
-                <span>{formatAdminPrice(dish.price, menu.locale, menu.currency)}</span>
-                <span className={dish.availability === "available" ? styles.availableBadge : styles.unavailableBadge}>
-                  {availabilityLabels[dish.availability]}
-                </span>
-                {dish.badges.length > 0 && (
-                  <span>{dish.badges.map((code) => badgeLabels[code] ?? code).join(", ")}</span>
+          {visibleDishes.map((dish, index) => {
+            const priceDraft = priceDrafts[dish.id];
+            const priceChanged = priceDraft !== undefined && priceDraft.trim() !== ""
+              && Number(priceDraft) !== Number(dish.price);
+            return (
+              <li key={dish.id} className={styles.categoryRow}>
+                {dish.media?.variants[0] && (
+                  <Image
+                    unoptimized
+                    loader={({ src }) => src}
+                    className={styles.dishThumbnail}
+                    src={dish.media.variants[0].url}
+                    width={dish.media.variants[0].width}
+                    height={dish.media.variants[0].height}
+                    alt={dish.media.altText}
+                  />
                 )}
-              </span>
-              <span className={styles.categoryActions}>
-                <button
-                  type="button"
-                  disabled={disabled || index === 0}
-                  aria-label={`Move ${dish.name} up`}
-                  onClick={() => move(index, index - 1)}
-                >
-                  Move up
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled || index === dishes.length - 1}
-                  aria-label={`Move ${dish.name} down`}
-                  onClick={() => move(index, index + 1)}
-                >
-                  Move down
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  aria-label={dish.availability === "available"
-                    ? `Mark ${dish.name} unavailable`
-                    : `Mark ${dish.name} available`}
-                  onClick={() => toggleAvailability(dish)}
-                >
-                  {dish.availability === "available" ? "Mark unavailable" : "Mark available"}
-                </button>
-                <button type="button" disabled={disabled} aria-label={`Edit ${dish.name}`} onClick={() => startEditing(dish)}>
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={styles.dangerButton}
-                  disabled={disabled}
-                  aria-label={`Delete ${dish.name}`}
-                  onClick={() => setPendingDelete(dish)}
-                >
-                  Delete
-                </button>
-              </span>
-            </li>
-          ))}
+                <span className={styles.categoryMeta}>
+                  <strong>{dish.name}</strong>
+                  <span>{formatAdminPrice(dish.price, menu.locale, menu.currency)}</span>
+                  {filtering && <span>{categoryNames.get(dish.categoryId) ?? ""}</span>}
+                  <span className={dish.availability === "available" ? styles.availableBadge : styles.unavailableBadge}>
+                    {availabilityLabels[dish.availability]}
+                  </span>
+                  {dish.badges.length > 0 && (
+                    <span>{dish.badges.map((code) => badgeLabels[code] ?? code).join(", ")}</span>
+                  )}
+                </span>
+                <span className={styles.inlinePrice}>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    aria-label={`Price for ${dish.name}`}
+                    {...(priceDishId === dish.id ? fieldA11y("price") : {})}
+                    value={priceDraft ?? dish.price}
+                    onChange={(event) => {
+                      setPriceDrafts((current) => ({ ...current, [dish.id]: event.target.value }));
+                      setDirty(true);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={disabled || !priceChanged}
+                    aria-label={`Save price for ${dish.name}`}
+                    onClick={() => savePrice(dish)}
+                  >
+                    Save price
+                  </button>
+                  {priceDishId === dish.id && errorFor("price")}
+                </span>
+                <span className={styles.categoryActions}>
+                  <button
+                    type="button"
+                    disabled={disabled || filtering || index === 0}
+                    aria-label={`Move ${dish.name} up`}
+                    onClick={() => move(index, index - 1)}
+                  >
+                    Move up
+                  </button>
+                  <button
+                    type="button"
+                    disabled={disabled || filtering || index === visibleDishes.length - 1}
+                    aria-label={`Move ${dish.name} down`}
+                    onClick={() => move(index, index + 1)}
+                  >
+                    Move down
+                  </button>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label={dish.availability === "available"
+                      ? `Mark ${dish.name} unavailable`
+                      : `Mark ${dish.name} available`}
+                    onClick={() => toggleAvailability(dish)}
+                  >
+                    {dish.availability === "available" ? "Mark unavailable" : "Mark available"}
+                  </button>
+                  <button type="button" disabled={disabled} aria-label={`Edit ${dish.name}`} onClick={() => startEditing(dish)}>
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.dangerButton}
+                    disabled={disabled}
+                    aria-label={`Delete ${dish.name}`}
+                    onClick={() => setPendingDelete(dish)}
+                  >
+                    Delete
+                  </button>
+                </span>
+              </li>
+            );
+          })}
         </ol>
       </section>
 
       {pendingDelete && (
-        <DeleteDishDialog
-          dish={pendingDelete}
+        <ConfirmDialog
+          idPrefix="delete-dish"
+          title={`Delete “${pendingDelete.name}”?`}
+          description={`${pendingDelete.name} disappears from the menu immediately. The record is kept for `
+            + "reporting, but visitors will no longer see it. To hide a dish temporarily instead, set it "
+            + "to Unavailable."}
           onCancel={() => setPendingDelete(null)}
           onConfirm={() => {
             const dish = pendingDelete;
@@ -338,7 +355,13 @@ export function DishManager({ initial, initialMedia }: { initial: AdminMenu; ini
         />
       )}
 
-      <form ref={formRef} className={styles.editorSection} onSubmit={submit} aria-labelledby="dish-form-title">
+      <form
+        ref={formRef}
+        className={styles.editorSection}
+        onSubmit={submit}
+        onChange={() => setDirty(true)}
+        aria-labelledby="dish-form-title"
+      >
         <h2 id="dish-form-title">{editingDishId ? "Edit dish" : "Add a dish"}</h2>
         <div className={styles.formGrid}>
           <label>
@@ -371,11 +394,11 @@ export function DishManager({ initial, initialMedia }: { initial: AdminMenu; ini
               min={0}
               step="0.01"
               inputMode="decimal"
-              {...fieldA11y("price")}
+              {...(priceDishId === null ? fieldA11y("price") : { "data-error-field": "price" })}
               value={form.price}
               onChange={(event) => setForm({ ...form, price: event.target.value })}
             />
-            {errorFor("price")}
+            {priceDishId === null && errorFor("price")}
           </label>
           <label>
             Availability

@@ -1,0 +1,49 @@
+{
+  "//": [
+    "Lighthouse budgets for PR-23 Task 13.",
+    "",
+    "SCOPE — read before citing a score. This is a LAB measurement of a local production build; it is",
+    "not a staging or field measurement. A headless Linux run on a developer laptop (or a shared CI",
+    "runner) is not the mobile-throttled reference environment the Phase 1 Core Web Vitals targets",
+    "assume, and scores move with host load. Treat this as a regression detector, not as certification",
+    "that field targets are met. Field data comes from the in-app Core Web Vitals reporter instead.",
+    "This mirrors the disclaimer scripts/perf-report.mjs already carries.",
+    "",
+    "URLS — the three public routes that actually exist. There is deliberately no search page: this",
+    "application has no search feature (specifications/phase-8/README.md, Ruling 1), and scoring /menu",
+    "twice under a different name would be dishonest evidence. Nor is there a restaurant page separate",
+    "from the homepage — each restaurant is a tenant on its own host, so / IS the restaurant page.",
+    "",
+    "Runs against `next start` output only. Never point this at `npm run dev`."
+  ],
+  "ci": {
+    "collect": {
+      "url": [
+        "http://menu.localhost:3000/",
+        "http://menu.localhost:3000/menu",
+        "http://menu.localhost:3000/menu/mains"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "desktop",
+        "onlyCategories": ["performance", "accessibility", "best-practices", "seo"]
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.9 }],
+        "categories:accessibility": ["error", { "minScore": 0.9 }],
+        "categories:best-practices": ["warn", { "minScore": 0.9 }],
+        "categories:seo": ["warn", { "minScore": 0.9 }],
+        "first-contentful-paint": ["warn", { "maxNumericValue": 1800 }],
+        "largest-contentful-paint": ["warn", { "maxNumericValue": 2500 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+        "total-blocking-time": ["warn", { "maxNumericValue": 200 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./test-results/lighthouse"
+    }
+  }
+}

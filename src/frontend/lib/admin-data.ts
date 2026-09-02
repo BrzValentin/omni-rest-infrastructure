@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import type { AdminRestaurant } from "./restaurant-contract";
-import { getAdminRestaurant } from "./server-api";
+import { getAdminRestaurant, UNREACHABLE_API } from "./server-api";
 
 /**
  * Request-scoped reader for the one restaurant this portal instance manages.
@@ -17,6 +17,6 @@ import { getAdminRestaurant } from "./server-api";
  * own session check remains the thing that decides whether the page renders at all.
  */
 export const readAdminRestaurant = cache(async (): Promise<AdminRestaurant | null> => {
-  const result = await getAdminRestaurant().catch(() => ({ status: 503, data: null }));
+  const result = await getAdminRestaurant().catch(() => UNREACHABLE_API);
   return result.data;
 });

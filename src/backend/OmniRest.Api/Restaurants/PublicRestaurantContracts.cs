@@ -73,7 +73,13 @@ public sealed record PublicRestaurantResponse(
     /// When the current publication row was written; supplied by <c>PublicMenuReader</c> from
     /// <c>publications.published_at</c> rather than from the snapshot. Null before first publication.
     /// </summary>
-    DateTimeOffset? PublishedAt = null);
+    DateTimeOffset? PublishedAt = null,
+
+    /// <summary>
+    /// The restaurant's own site, already validated as an absolute https URL, so the page may render it
+    /// as an anchor and JSON-LD may use it as <c>url</c> without further checks. Null when unset.
+    /// </summary>
+    string? WebsiteUrl = null);
 
 public sealed class RestaurantPublicProjectionBuilder(
     TimeProvider timeProvider,
@@ -135,7 +141,11 @@ public sealed class RestaurantPublicProjectionBuilder(
             restaurant.PriceRange,
             logo,
             coverImage);
-        return response with { Status = statusCalculator.Calculate(response, timeProvider.GetUtcNow()) };
+        return response with
+        {
+            Status = statusCalculator.Calculate(response, timeProvider.GetUtcNow()),
+            WebsiteUrl = restaurant.WebsiteUrl
+        };
     }
 
     /// <summary>

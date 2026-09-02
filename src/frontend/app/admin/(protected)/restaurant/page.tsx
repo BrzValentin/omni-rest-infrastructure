@@ -1,19 +1,25 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { AdminUnavailable } from "@/components/admin/AdminUnavailable";
 import { RestaurantEditor } from "@/components/admin/RestaurantEditor";
-import { getAdminMediaAssets, getAdminRestaurant } from "@/lib/server-api";
+import { getAdminMediaAssets, getAdminRestaurant, UNREACHABLE_API } from "@/lib/server-api";
 import { safeAdminReturnPath } from "@/lib/auth-contract";
 
 export const dynamic = "force-dynamic";
 
 export default async function RestaurantPage() {
-  const [result, media, requestHeaders] = await Promise.all([getAdminRestaurant(), getAdminMediaAssets(), headers()]);
+  const [result, media, requestHeaders] = await Promise.all([
+    getAdminRestaurant().catch(() => UNREACHABLE_API),
+    // The media list is decoration for the editor, so it degrades to empty rather than to a dead end.
+    getAdminMediaAssets().catch(() => UNREACHABLE_API),
+    headers(),
+  ]);
   if (result.status === 401 || result.status === 403) {
     const returnPath = safeAdminReturnPath(requestHeaders.get("x-omni-admin-return-path"));
     redirect(`/admin/login?returnPath=${encodeURIComponent(returnPath)}`);
   }
   if (!result.data) {
-    return <main id="main-content"><h1>Restaurant editor unavailable</h1><p>Try again in a few minutes.</p></main>;
+    return <AdminUnavailable reason={result.status === 404 ? "empty" : "unavailable"} section="admin.section.restaurant" />;
   }
   return <RestaurantEditor initial={result.data} initialMedia={media.data ?? []} />;
 }

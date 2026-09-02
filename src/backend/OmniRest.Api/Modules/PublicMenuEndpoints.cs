@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Http.HttpResults;
 using OmniRest.Api.Menus;
+using OmniRest.Api.Security;
 
 namespace OmniRest.Api.Modules;
 
@@ -18,7 +18,7 @@ internal static class PublicMenuEndpoints
         return publicApi;
     }
 
-    private static async Task<Results<Ok<PublicMenuResponse>, StatusCodeHttpResult, ProblemHttpResult>> GetMenuAsync(
+    private static async Task<IResult> GetMenuAsync(
         HttpRequest request,
         HttpResponse response,
         IPublicMenuReader reader,
@@ -27,11 +27,13 @@ internal static class PublicMenuEndpoints
         var result = await reader.ReadAsync(request.Host, cancellationToken);
         if (result is null)
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status404NotFound,
-                title: "Restaurant not found",
-                detail: "No public restaurant is configured for this host.",
-                type: "https://httpstatuses.com/404");
+            // The same code its sibling public endpoints return. A bare TypedResults.Problem here left the
+            // body with the meaningless filled-in http_error, so one 404 out of three was undiscriminated.
+            return ApiProblems.Problem(
+                StatusCodes.Status404NotFound,
+                "public_restaurant_not_found",
+                "Restaurant not found",
+                "No public restaurant is configured for this host.");
         }
 
         response.Headers.ETag = result.ETag;

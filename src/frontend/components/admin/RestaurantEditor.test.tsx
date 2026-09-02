@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,16 +52,18 @@ describe("RestaurantEditor", () => {
     const setValue = (field: HTMLElement, value: string) => { fireEvent.change(field, { target: { value } }); };
 
     for (const [label, value] of [
-      ["Name", "New Prairie Table"], ["Description", "Updated seasonal"], ["Phone display", "204-555-0123"],
-      ["Email", "new@example.test"], ["Time zone", "America/Regina"], ["Address line 1", "2 Main"],
+      ["Name", "New Prairie Table"], ["Description", "Updated seasonal"],
+      ["Phone number as shown to visitors", "204-555-0123"],
+      ["Email", "new@example.test"], ["Website", "https://prairietable.example"], ["Address line 1", "2 Main"],
       ["Address line 2", "Suite 1"], ["City", "Brandon"], ["Province or state", "SK"], ["Postal code", "R7A 0A1"], ["Country code", "US"],
     ]) {
       setValue(screen.getByLabelText(label), value);
     }
-    setValue(screen.getByLabelText("Phone (E.164)"), "2045550123");
+    setValue(screen.getByLabelText("Time zone"), "America/Regina");
+    setValue(screen.getByLabelText("Phone number (with country code)"), "2045550123");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
-    expect(screen.getByText(/Phone must be E\.164/)).toBeVisible();
-    setValue(screen.getByLabelText("Phone (E.164)"), "+12045550123");
+    expect(screen.getByText(/Enter the phone number with its country code/)).toBeVisible();
+    setValue(screen.getByLabelText("Phone number (with country code)"), "+12045550123");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/profile", "PUT", expect.any(Object), '"draft-3"'));
 
@@ -212,6 +214,121 @@ describe("RestaurantEditor", () => {
     expect(container).not.toHaveAttribute("aria-hidden");
   });
 
+  it("saves the restaurant's own website and explains an address it will not accept", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValueOnce(new BrowserApiError(400, {
+      code: "admin_validation", errors: { websiteUrl: ["website_url_invalid"] },
+    }));
+    render(<RestaurantEditor initial={{ ...initial, websiteUrl: "https://prairietable.example" }} initialMedia={[]} />);
+
+    const website = screen.getByLabelText("Website");
+    expect(website).toHaveAttribute("type", "url");
+    expect(website).toHaveValue("https://prairietable.example");
+
+    fireEvent.change(website, { target: { value: "http://insecure.example" } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    // The message appears twice by design: once in the error summary, once beside the field.
+    await waitFor(() => expect(
+      screen.getAllByText(/Enter a full web address that starts with https/)).toHaveLength(2));
+    expect(website).toHaveAttribute("aria-invalid", "true");
+    expect(website).toHaveAttribute("aria-describedby", "error-websiteUrl");
+    // The error summary names the field the way the form does, not the way the API does.
+    expect(within(screen.getByRole("alert", { name: "Please correct these fields" })).getByText("Website")).toBeVisible();
+
+    fireEvent.change(website, { target: { value: "https://prairietable.example" } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await waitFor(() => expect(mocks.mutate).toHaveBeenLastCalledWith(
+      "/api/v1/admin/restaurant/profile", "PUT",
+      expect.objectContaining({ websiteUrl: "https://prairietable.example" }), '"draft-3"'));
+  });
+
+  it("clears the website when the field is left blank", async () => {
+    const user = userEvent.setup();
+    render(<RestaurantEditor initial={{ ...initial, websiteUrl: "https://prairietable.example" }} initialMedia={[]} />);
+
+    fireEvent.change(screen.getByLabelText("Website"), { target: { value: "   " } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/profile", "PUT",
+      expect.objectContaining({ websiteUrl: null }), '"draft-3"'));
+  });
+
+  it("offers time zones as places to pick rather than an identifier to type", () => {
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+
+    const zone = screen.getByLabelText("Time zone");
+    expect(zone.tagName).toBe("SELECT");
+    expect(zone).toHaveValue("America/Winnipeg");
+    expect(within(zone).getByRole("option", { name: "Central — Winnipeg" })).toBeInTheDocument();
+    expect(within(zone).getByRole("option", { name: "Pacific — Vancouver" })).toBeInTheDocument();
+  });
+
+  it("keeps a time zone that is not on the Canadian list rather than silently changing it", () => {
+    render(<RestaurantEditor initial={{ ...initial, timeZone: "Europe/Kyiv" }} initialMedia={[]} />);
+    expect(screen.getByLabelText("Time zone")).toHaveValue("Europe/Kyiv");
+  });
+
+  it("speaks plainly in the status bar and the publication panel", () => {
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+
+    expect(screen.queryByText(/Draft 3/)).toBeNull();
+    expect(screen.queryByText(/projection_failed/)).toBeNull();
+    // The media library's processing state is described, never printed as its stored value.
+    expect(screen.queryByText(/\(ready\)/)).toBeNull();
+    expect(screen.getByText(/Dining room — ready to use/)).toBeVisible();
+    expect(screen.getByText("Last saved")).toBeVisible();
+    expect(screen.getAllByText("Website update did not finish").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/We have tried 2 times/)).toBeVisible();
+  });
+
+  it("sends the owner back to sign in when the session ends mid-save, keeping every entry", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValue(new BrowserApiError(401, { code: "unauthorized" }));
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Seasonal, retained" } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    expect(await screen.findByText(/Your session ended/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Sign in again" }))
+      .toHaveAttribute("href", "/admin/login?returnPath=%2Fadmin");
+    expect(screen.getByLabelText("Description")).toHaveValue("Seasonal, retained");
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("re-issues the last failed save from a Try again button", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValueOnce(new BrowserApiError(503, { code: "unexpected_error" }));
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Prairie Table" } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(await screen.findByText(/Saving failed/)).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(2));
+    expect(mocks.mutate).toHaveBeenLastCalledWith("/api/v1/admin/restaurant/profile", "PUT",
+      expect.objectContaining({ name: "New Prairie Table" }), '"draft-3"');
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("warns before the browser walks away from unsaved profile edits", async () => {
+    const user = userEvent.setup();
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+
+    const clean = createEvent("beforeunload", window, { cancelable: true });
+    fireEvent(window, clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    await user.type(screen.getByLabelText("Name"), "!");
+
+    const leaving = createEvent("beforeunload", window, { cancelable: true });
+    fireEvent(window, leaving);
+    expect(leaving.defaultPrevented).toBe(true);
+  });
+
   it("adopts a new pending publication prop and polls it to completion", async () => {
     vi.useFakeTimers();
     const pending = { ...initial.publicationStatus!, operationId: "new-operation", status: "pending", errorCode: null, updatedAt: "2026-07-31T13:00:00Z" };
@@ -221,10 +338,10 @@ describe("RestaurantEditor", () => {
     expect(screen.getByRole("button", { name: "Retry publication" })).toBeVisible();
     rerender(<PublicationPanel status={pending} />);
     expect(screen.queryByRole("button", { name: "Retry publication" })).not.toBeInTheDocument();
-    expect(screen.getByText("pending", { selector: "strong" })).toBeVisible();
+    expect(screen.getByText("Website updating now", { selector: "strong" })).toBeVisible();
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     expect(mocks.browserGet).toHaveBeenCalledWith("/api/v1/admin/publication-status/new-operation");
-    expect(screen.getByText("succeeded", { selector: "strong" })).toBeVisible();
+    expect(screen.getByText("Website up to date", { selector: "strong" })).toBeVisible();
     vi.useRealTimers();
   });
 });

@@ -1,97 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
+import { useState, type DragEvent, type FormEvent } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { DraftStatusBar } from "./DraftStatusBar";
+import { fieldErrorHelpers } from "./FieldError";
 import { messageForCodes, useMenuDraft } from "./useMenuDraft";
 import {
   categoryDescriptionMaxLength,
   categoryNameMaxLength,
-
   moveCategory,
   type AdminMenu,
   type AdminMenuCategory,
-
 } from "@/lib/menu-admin-contract";
 import styles from "@/app/admin/admin.module.css";
 
-function DeleteCategoryDialog({ category, onCancel, onConfirm }: {
-  category: AdminMenuCategory;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    const background = Array.from(document.body.children)
-      .filter((element) => !element.contains(dialog))
-      .map((element) => ({
-        element: element as HTMLElement,
-        inert: element.hasAttribute("inert"),
-        ariaHidden: element.getAttribute("aria-hidden"),
-      }));
-    for (const item of background) {
-      item.element.setAttribute("inert", "");
-      item.element.setAttribute("aria-hidden", "true");
-    }
-    cancelRef.current?.focus();
-    return () => {
-      for (const item of background) {
-        if (!item.inert) item.element.removeAttribute("inert");
-        if (item.ariaHidden === null) item.element.removeAttribute("aria-hidden");
-        else item.element.setAttribute("aria-hidden", item.ariaHidden);
-      }
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, []);
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? []);
-    if (focusable.length === 0) return;
-    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
-    const nextIndex = event.shiftKey
-      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
-      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
-    event.preventDefault();
-    focusable[nextIndex].focus();
-  }
-
-  return createPortal(
-    <div className={styles.modalBackdrop}>
-      <div
-        ref={dialogRef}
-        className={styles.confirmation}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-category-title"
-        aria-describedby="delete-category-description"
-        onKeyDown={handleKeyDown}
-      >
-        <h3 id="delete-category-title">Delete “{category.name}”?</h3>
-        <p id="delete-category-description">
-          This removes the category from the draft menu and publishes immediately. Categories that still contain dishes
-          cannot be deleted.
-        </p>
-        <div className={styles.buttonRow}>
-          <button ref={cancelRef} className={styles.secondaryButton} type="button" onClick={onCancel}>Cancel</button>
-          <button className={styles.dangerButton} type="button" onClick={onConfirm}>Confirm delete</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export function CategoryManager({ initial }: { initial: AdminMenu }) {
-  const { menu, busy, notice, setNotice, conflict, fieldErrors, save } = useMenuDraft(initial);
+  const {
+    menu, busy, notice, setNotice, conflict, sessionExpired, fieldErrors, setDirty, save, retrySave,
+  } = useMenuDraft(initial);
   const [draftName, setDraftName] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -155,18 +81,7 @@ export function CategoryManager({ initial }: { initial: AdminMenu }) {
     if (from >= 0 && from !== to) move(from, to);
   }
 
-  function errorFor(field: string) {
-    const text = messageForCodes(fieldErrors[field]);
-    if (!text) return null;
-    return <span className={styles.fieldError} id={`menu-error-${field}`}>{text}</span>;
-  }
-  function fieldA11y(field: string) {
-    return {
-      "data-error-field": field,
-      "aria-invalid": Boolean(fieldErrors[field]),
-      "aria-describedby": fieldErrors[field] ? `menu-error-${field}` : undefined,
-    };
-  }
+  const { errorFor, fieldA11y } = fieldErrorHelpers(fieldErrors, "menu-error", messageForCodes);
 
   if (!menu.menuId) {
     return (
@@ -187,12 +102,14 @@ export function CategoryManager({ initial }: { initial: AdminMenu }) {
         <a className={styles.secondaryButton} href="/admin/restaurant/preview">Preview draft</a>
       </div>
 
-      <div className={styles.statusBar} role="status" aria-live="polite">
-        <span>Draft {menu.draftVersion}</span>
-        <span>Publication: {menu.publicationStatus?.status ?? "not started"}</span>
-        {notice && <strong>{notice}</strong>}
-        {conflict && <button type="button" onClick={() => window.location.reload()}>Reload latest</button>}
-      </div>
+      <DraftStatusBar
+        publication={menu.publicationStatus}
+        notice={notice}
+        conflict={conflict}
+        sessionExpired={sessionExpired}
+        onRetry={retrySave}
+        busy={disabled}
+      />
 
       <section className={styles.editorSection} aria-labelledby="category-list-title">
         <h2 id="category-list-title">{menu.menuName}</h2>
@@ -218,7 +135,7 @@ export function CategoryManager({ initial }: { initial: AdminMenu }) {
             >
               <span className={styles.categoryDrag} aria-hidden="true">⠿</span>
               {editingId === category.id ? (
-                <form className={styles.inlineForm} onSubmit={submitRename}>
+                <form className={styles.inlineForm} onSubmit={submitRename} onChange={() => setDirty(true)}>
                   <label>
                     Category name
                     <input
@@ -297,8 +214,11 @@ export function CategoryManager({ initial }: { initial: AdminMenu }) {
       </section>
 
       {pendingDelete && (
-        <DeleteCategoryDialog
-          category={pendingDelete}
+        <ConfirmDialog
+          idPrefix="delete-category"
+          title={`Delete “${pendingDelete.name}”?`}
+          description={"This removes the category from the draft menu and publishes immediately. "
+            + "Categories that still contain dishes cannot be deleted."}
           onCancel={() => setPendingDelete(null)}
           onConfirm={() => {
             const category = pendingDelete;
@@ -308,7 +228,12 @@ export function CategoryManager({ initial }: { initial: AdminMenu }) {
         />
       )}
 
-      <form className={styles.editorSection} onSubmit={submitCreate} aria-labelledby="category-create-title">
+      <form
+        className={styles.editorSection}
+        onSubmit={submitCreate}
+        onChange={() => setDirty(true)}
+        aria-labelledby="category-create-title"
+      >
         <h2 id="category-create-title">Add a category</h2>
         <div className={styles.formGrid}>
           <label>

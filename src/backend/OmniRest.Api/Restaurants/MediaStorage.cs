@@ -548,6 +548,7 @@ public interface IMediaAssetService
 public sealed class MediaAssetService(
     MenuDbContext dbContext,
     ILocalMediaStorage storage,
+    IResponsiveImageVariantFactory variantFactory,
     TimeProvider timeProvider,
     ILogger<MediaAssetService> logger) : IMediaAssetService
 {
@@ -582,7 +583,12 @@ public sealed class MediaAssetService(
             return ManagementResult<AdminMediaAssetResponse>.Failed(new ManagementFailure(400, "admin_validation", "Media upload is invalid", Errors: new Dictionary<string, string[]> { ["file"] = [exception.Code] }));
         }
         var id = Guid.NewGuid();
-        var stored = await storage.StoreAsync(access.RestaurantId, id, image, cancellationToken);
+
+        // One upload now yields a responsive set rather than a single full-size blob (PR-23). The read
+        // side already handles it: the public projection orders variants by width and the frontend picks
+        // the widest it can use, so a dish image finally has something smaller than the original to serve.
+        var ladder = await variantFactory.CreateAsync(image, cancellationToken);
+        var stored = await StoreLadderAsync(access.RestaurantId, id, image, ladder, cancellationToken);
         try
         {
             var entity = new MediaAssetEntity
@@ -592,16 +598,21 @@ public sealed class MediaAssetService(
                 AltText = altText!.Trim(),
                 ProcessingStatus = "ready"
             };
-            entity.Variants.Add(new MediaVariantEntity
+            foreach (var rung in stored.Rungs)
             {
-                Id = Guid.NewGuid(),
-                RestaurantId = access.RestaurantId,
-                MediaAssetId = id,
-                MediaAsset = entity,
-                Url = stored.Url,
-                Width = stored.Width,
-                Height = stored.Height
-            });
+                entity.Variants.Add(new MediaVariantEntity
+                {
+                    Id = Guid.NewGuid(),
+                    RestaurantId = access.RestaurantId,
+                    MediaAssetId = id,
+                    MediaAsset = entity,
+                    Url = rung.Blob.Url,
+                    Width = rung.Blob.Width,
+                    Height = rung.Blob.Height,
+                    StorageKey = GalleryStorageKey.Create(access.RestaurantId, rung.FileNameSeed, image.Extension),
+                    FileSizeBytes = rung.Variant.Bytes.LongLength
+                });
+            }
             dbContext.MediaAssets.Add(entity);
             dbContext.AuditEvents.Add(new AuditEventEntity
             {
@@ -616,7 +627,9 @@ public sealed class MediaAssetService(
             await dbContext.SaveChangesAsync(cancellationToken);
             return ManagementResult<AdminMediaAssetResponse>.Success(new AdminMediaAssetResponse(
                 id.ToString(), entity.AltText, entity.ProcessingStatus,
-                [new OmniRest.Api.Menus.PublicMediaVariant(stored.Url, stored.Width, stored.Height)]));
+                entity.Variants.OrderBy(item => item.Width).ThenBy(item => item.Height)
+                    .Select(item => new OmniRest.Api.Menus.PublicMediaVariant(item.Url, item.Width, item.Height))
+                    .ToArray()));
         }
         catch (Exception persistenceException)
         {
@@ -642,6 +655,99 @@ public sealed class MediaAssetService(
         finally
         {
             await stored.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Writes every rung, compensating the ones already written if a later one fails, so a half-stored
+    /// ladder never survives to become variant rows pointing at missing files.
+    /// </summary>
+    private async Task<StoredImageLadder> StoreLadderAsync(
+        Guid restaurantId,
+        Guid mediaAssetId,
+        ValidatedImage image,
+        IReadOnlyList<ResponsiveImageVariant> ladder,
+        CancellationToken cancellationToken)
+    {
+        var stored = new StoredImageLadder();
+        try
+        {
+            foreach (var variant in ladder)
+            {
+                // The full-size rung keeps the asset's own file name, so the blob layout of an upload is
+                // unchanged from before the ladder existed; each derived rung gets its own random seed.
+                var seed = variant.ReusedSource ? mediaAssetId : Guid.NewGuid();
+                var blob = await storage.StoreAsync(
+                    restaurantId,
+                    seed,
+                    variant.ReusedSource
+                        ? image
+                        : new ValidatedImage(variant.Bytes, image.Extension, image.ContentType, variant.Width, variant.Height),
+                    cancellationToken);
+                stored.Add(seed, variant, blob);
+            }
+            return stored;
+        }
+        catch
+        {
+            try
+            {
+                await stored.CompensateAsync(CancellationToken.None);
+            }
+            catch (Exception cleanupException)
+            {
+                logger.LogCritical(
+                    cleanupException,
+                    "Responsive variant compensation failed for asset {MediaAssetId} in restaurant {RestaurantId}.",
+                    mediaAssetId,
+                    restaurantId);
+            }
+            await stored.DisposeAsync();
+            throw;
+        }
+    }
+
+    private sealed record StoredRung(Guid FileNameSeed, ResponsiveImageVariant Variant, StoredMedia Blob);
+
+    private sealed class StoredImageLadder : IAsyncDisposable
+    {
+        private readonly List<StoredRung> rungs = [];
+
+        public IReadOnlyList<StoredRung> Rungs => rungs;
+
+        public void Add(Guid fileNameSeed, ResponsiveImageVariant variant, StoredMedia blob) =>
+            rungs.Add(new StoredRung(fileNameSeed, variant, blob));
+
+        /// <summary>
+        /// Deletes every stored rung. One failure does not stop the others: leaving the remaining blobs
+        /// behind because the first delete threw would orphan more files, not fewer.
+        /// </summary>
+        public async Task CompensateAsync(CancellationToken cancellationToken)
+        {
+            List<Exception>? failures = null;
+            foreach (var rung in rungs)
+            {
+                try
+                {
+                    await rung.Blob.CompensateAsync(cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= []).Add(exception);
+                }
+            }
+            if (failures is not null)
+            {
+                throw new AggregateException("One or more responsive variant blobs could not be deleted.", failures);
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            foreach (var rung in rungs)
+            {
+                await rung.Blob.DisposeAsync();
+            }
         }
     }
 }

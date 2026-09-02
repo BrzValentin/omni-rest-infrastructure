@@ -135,6 +135,11 @@ public sealed class MenuApiTests(PostgresFixture postgres)
         var problem = await unknown.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(404, problem.GetProperty("status").GetInt32());
         Assert.False(problem.TryGetProperty("stackTrace", out _));
+
+        // The menu endpoint names the same failure its sibling public endpoints do, rather than falling
+        // through to the meaningless http_error the problem-details customisation fills in (PR-22).
+        Assert.Equal("public_restaurant_not_found", problem.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrEmpty(problem.GetProperty("correlationId").GetString()));
     }
 
     [Fact]
@@ -417,6 +422,52 @@ public sealed class MenuApiTests(PostgresFixture postgres)
         Assert.Equal("0", unpublished.PublicationVersion);
         Assert.Null(unpublished.PublishedAt);
         Assert.Null(unpublished.Restaurant);
+    }
+
+    /// <summary>
+    /// The public snapshot is the single largest byte cost this API pays, so it must actually go out
+    /// compressed for a client that asks — and the compressed bytes must still be the same parseable
+    /// contract, not a truncated or double-encoded body.
+    /// </summary>
+    [Fact]
+    public async Task ThePublicMenuIsBrotliCompressedWhenAskedAndTheDecodedBodyStillParses()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/public/menu");
+        request.Headers.Host = "menu.localhost";
+        request.Headers.AcceptEncoding.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue("br"));
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(["br"], response.Content.Headers.ContentEncoding);
+        Assert.Contains("Accept-Encoding", response.Headers.Vary, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+
+        var compressed = await response.Content.ReadAsByteArrayAsync();
+        await using var compressedStream = new MemoryStream(compressed);
+        await using var brotli = new System.IO.Compression.BrotliStream(
+            compressedStream, System.IO.Compression.CompressionMode.Decompress);
+        using var decoded = new MemoryStream();
+        await brotli.CopyToAsync(decoded);
+        Assert.True(
+            decoded.Length > compressed.Length,
+            $"Expected the decoded body ({decoded.Length} bytes) to be larger than the compressed one ({compressed.Length} bytes).");
+
+        var body = JsonSerializer.Deserialize<PublicMenuResponse>(
+            decoded.ToArray(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("Prairie Table", body?.RestaurantName);
+        Assert.NotNull(body?.Menu);
+        Assert.Equal(["starters", "mains", "desserts"], body.Menu.Categories.Select(item => item.Slug));
+
+        // A client that advertises nothing still gets plain JSON rather than a body it cannot read.
+        using var plainRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/public/menu");
+        plainRequest.Headers.Host = "menu.localhost";
+        using var plain = await client.SendAsync(plainRequest);
+        Assert.Empty(plain.Content.Headers.ContentEncoding);
+        Assert.Equal("Prairie Table", (await plain.Content.ReadFromJsonAsync<PublicMenuResponse>())?.RestaurantName);
     }
 
     private static async Task<HttpResponseMessage> SendForHostAsync(HttpClient client, string host)

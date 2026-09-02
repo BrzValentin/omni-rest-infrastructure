@@ -2,6 +2,7 @@ using System.Net;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
@@ -23,13 +24,47 @@ builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = 
             : "http_error";
     }
     context.ProblemDetails.Extensions["correlationId"] = context.HttpContext.TraceIdentifier;
+
+    // Every unexpected failure passes through here exactly once, whichever component produced it, so
+    // this is the one place that can guarantee a 5xx is never silently swallowed. The body stays
+    // deliberately generic; the correlation id is what ties it to this log line (PR-22).
+    if (context.ProblemDetails.Status >= StatusCodes.Status500InternalServerError)
+    {
+        context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("OmniRest.Api.ProblemDetails")
+            .LogError(
+                "Request {Method} {Path} failed with status {StatusCode} and code {Code} (correlationId {CorrelationId}).",
+                context.HttpContext.Request.Method,
+                context.HttpContext.Request.Path.Value,
+                context.ProblemDetails.Status,
+                context.ProblemDetails.Extensions["code"],
+                context.HttpContext.TraceIdentifier);
+    }
 });
 builder.Services.AddOpenApi();
+
+// Brotli first, gzip as the fallback: the 1000-dish public snapshot is highly compressible JSON and is
+// the single largest byte cost this API pays. Only the two JSON media types are compressed — already
+// compressed image bytes gain nothing and cost CPU.
+builder.Services.Configure<PerformanceLoggingOptions>(
+    builder.Configuration.GetSection(PerformanceLoggingOptions.SectionName));
+builder.Services.AddSingleton<SlowQueryInterceptor>();
+builder.Services.AddResponseCompression(options =>
+{
+    // The deployment terminates TLS at the reverse proxy, so leaving this off would disable compression
+    // for every real request. Responses here carry no attacker-reflected content next to a secret, which
+    // is the precondition a BREACH-style oracle needs.
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ["application/json", "application/problem+json"];
+});
 builder.Services.AddMemoryCache(options => options.SizeLimit = 64);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.Configure<PublicMenuOptions>(builder.Configuration.GetSection(PublicMenuOptions.SectionName));
-builder.Services.AddDbContext<MenuDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("MenuDatabase")));
+builder.Services.AddDbContext<MenuDbContext>((serviceProvider, options) =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("MenuDatabase"))
+        .AddInterceptors(serviceProvider.GetRequiredService<SlowQueryInterceptor>()));
 // Scoped per request: the tenant scope drives MenuDbContext's global query filters, and the restaurant
 // context is the single place a request establishes which restaurant it acts for (PR-20 Tasks 3 and 4).
 builder.Services.AddScoped<ITenantScope, TenantScope>();
@@ -47,10 +82,34 @@ builder.Services.AddScoped<IGalleryManagementService>(provider => provider.GetRe
 builder.Services.AddScoped<IMediaAssetService, MediaAssetService>();
 builder.Services.AddScoped<IRestaurantConfigurationService, RestaurantConfigurationService>();
 builder.Services.AddSingleton<IGalleryThumbnailFactory, GalleryThumbnailFactory>();
+builder.Services.AddSingleton<IResponsiveImageVariantFactory, ResponsiveImageVariantFactory>();
 builder.Services.AddScoped<IInProcessPublicationDispatcher, InProcessPublicationDispatcher>();
 builder.Services.AddSingleton<IPublicationFailurePolicy, NeverFailPublicationPolicy>();
 builder.Services.Configure<PublicationDispatcherOptions>(builder.Configuration.GetSection(PublicationDispatcherOptions.SectionName));
 builder.Services.AddHostedService<PublicationOutboxWorker>();
+
+// Every publication timing knob is configuration, so it is checked at startup the same way media
+// storage is: an out-of-range value fails the process rather than producing a worker that spins, never
+// retries, or holds a claim for a day.
+var publicationDispatcher = builder.Configuration.GetSection(PublicationDispatcherOptions.SectionName)
+    .Get<PublicationDispatcherOptions>() ?? new PublicationDispatcherOptions();
+if (publicationDispatcher.PollInterval <= TimeSpan.Zero || publicationDispatcher.PollInterval > TimeSpan.FromHours(1) ||
+    publicationDispatcher.ClaimLease <= TimeSpan.Zero || publicationDispatcher.ClaimLease > TimeSpan.FromHours(1) ||
+    publicationDispatcher.BatchSize is < 1 or > 500 ||
+    publicationDispatcher.PublicationDelay < TimeSpan.Zero || publicationDispatcher.PublicationDelay > TimeSpan.FromHours(1) ||
+    publicationDispatcher.MaxAttempts is < 1 or > 100 ||
+    publicationDispatcher.RetryBackoff < TimeSpan.Zero || publicationDispatcher.RetryBackoff > TimeSpan.FromHours(1))
+{
+    throw new InvalidOperationException("PublicationDispatcher configuration is outside the supported safe range.");
+}
+
+var performanceLogging = builder.Configuration.GetSection(PerformanceLoggingOptions.SectionName)
+    .Get<PerformanceLoggingOptions>() ?? new PerformanceLoggingOptions();
+if (performanceLogging.SlowRequestThreshold <= TimeSpan.Zero || performanceLogging.SlowRequestThreshold > TimeSpan.FromMinutes(5) ||
+    performanceLogging.SlowQueryThreshold <= TimeSpan.Zero || performanceLogging.SlowQueryThreshold > TimeSpan.FromMinutes(5))
+{
+    throw new InvalidOperationException("PerformanceLogging configuration is outside the supported safe range.");
+}
 
 var configuredMedia = builder.Configuration.GetSection(LocalMediaStorageOptions.SectionName)
     .Get<LocalMediaStorageOptions>() ?? new LocalMediaStorageOptions();
@@ -140,6 +199,12 @@ var app = builder.Build();
 
 Directory.CreateDirectory(mediaRoot);
 
+// Outermost, above the tenant media mount and the forwarded-header stripper: a fault in either of those
+// used to escape as a bare connection reset, because the handler sat below them. Everything downstream
+// now produces a ProblemDetails body with a code and a correlation id (PR-22).
+app.UseExceptionHandler();
+app.UseRequestTiming();
+
 // Media is served only to the restaurant that owns it (PR-20 Task 8). This replaces the blanket
 // static-file mount that previously exposed every tenant's files, drafts included, to any caller.
 app.UseTenantScopedMedia(mediaStorageOptions.PublicPathBase, mediaRoot);
@@ -161,7 +226,7 @@ app.Use(async (context, next) =>
     await next();
 });
 app.UseForwardedHeaders();
-app.UseExceptionHandler();
+app.UseResponseCompression();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {

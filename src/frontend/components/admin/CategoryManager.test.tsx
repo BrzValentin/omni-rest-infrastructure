@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +73,7 @@ describe("CategoryManager", () => {
       "/api/v1/admin/menu/categories", "POST", { name: "Brunch", description: "Weekend only" }, '"draft-4"'));
     expect(screen.getByLabelText("Name")).toHaveValue("");
     expect(screen.getByText("Brunch")).toBeVisible();
-    expect(screen.getByText(/Category saved\. Publishing succeeded\./)).toBeVisible();
+    expect(screen.getByText(/Category saved\. Your website is up to date\./)).toBeVisible();
   });
 
   it("renames a category from an inline form", async () => {
@@ -154,6 +154,54 @@ describe("CategoryManager", () => {
 
     expect(await screen.findByText(/The menu changed elsewhere/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Reload latest" })).toBeVisible();
+  });
+
+  it("sends the owner back to sign in when the session ends mid-save, keeping the form", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValue(new BrowserApiError(401, { code: "unauthorized" }));
+    render(<CategoryManager initial={initial} />);
+
+    await user.type(screen.getByLabelText("Name"), "Brunch");
+    await user.click(screen.getByRole("button", { name: "Add category" }));
+
+    expect(await screen.findByText(/Your session ended/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Sign in again" }))
+      .toHaveAttribute("href", "/admin/login?returnPath=%2Fadmin");
+    expect(screen.getByLabelText("Name")).toHaveValue("Brunch");
+  });
+
+  it("re-issues the last save from a Try again button", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValueOnce(new BrowserApiError(503, { code: "unexpected_error" }));
+    render(<CategoryManager initial={initial} />);
+
+    await user.type(screen.getByLabelText("Name"), "Brunch");
+    await user.click(screen.getByRole("button", { name: "Add category" }));
+    expect(await screen.findByText(/Saving failed/)).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(2));
+    expect(mocks.mutate).toHaveBeenLastCalledWith("/api/v1/admin/menu/categories", "POST",
+      { name: "Brunch", description: null }, '"draft-4"');
+  });
+
+  it("warns before the browser walks away from a half-typed category", async () => {
+    const user = userEvent.setup();
+    render(<CategoryManager initial={initial} />);
+
+    await user.type(screen.getByLabelText("Name"), "Brunch");
+
+    const leaving = createEvent("beforeunload", window, { cancelable: true });
+    fireEvent(window, leaving);
+    expect(leaving.defaultPrevented).toBe(true);
+  });
+
+  it("keeps the status bar free of draft version numbers and publication states", () => {
+    render(<CategoryManager initial={initial} />);
+    expect(screen.queryByText(/Draft 4/)).toBeNull();
+    expect(screen.getByText("Last saved")).toBeVisible();
+    expect(screen.getByText("Website up to date")).toBeVisible();
   });
 
   it("explains when the restaurant has no active menu", () => {

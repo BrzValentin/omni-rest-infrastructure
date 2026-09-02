@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -245,7 +245,7 @@ describe("DishManager", () => {
     await user.click(screen.getByRole("button", { name: "Add dish" }));
 
     expect(await screen.findByText(/at most two decimal places/)).toBeVisible();
-    expect(screen.getByLabelText(/^Price/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText(/^Price \(CAD\)/)).toHaveAttribute("aria-invalid", "true");
   });
 
   it("shows a status badge for every dish however long the list is", () => {
@@ -266,6 +266,140 @@ describe("DishManager", () => {
   it("asks for a category before dishes can be added", () => {
     render(<DishManager initial={{ ...initial, categories: [] }} initialMedia={[]} />);
     expect(screen.getByText(/Add at least one menu category/)).toBeVisible();
+  });
+
+  it("saves one price from the dish row through the price-only endpoint", async () => {
+    const user = userEvent.setup();
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+
+    const field = screen.getByLabelText("Price for Prairie Poutine");
+    const button = screen.getByRole("button", { name: "Save price for Prairie Poutine" });
+    expect(field).toHaveValue(12.5);
+    expect(button).toBeDisabled();
+
+    await user.clear(field);
+    await user.type(field, "13.75");
+    expect(button).toBeEnabled();
+    await user.click(button);
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith(
+      "/api/v1/admin/menu/dishes/dish-1/price", "PATCH", { price: 13.75 }, '"draft-4"'));
+    // The whole-dish endpoint stays untouched: a price change no longer rewrites every other field.
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/Prairie Poutine is now/)).toBeVisible();
+  });
+
+  it("keeps a rejected price beside the dish it came from", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValue(new BrowserApiError(400, {
+      code: "admin_validation", errors: { price: ["price_scale_invalid"] },
+    }));
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+
+    const field = screen.getByLabelText("Price for Roasted Tomato Soup");
+    await user.clear(field);
+    await user.type(field, "8.001");
+    await user.click(screen.getByRole("button", { name: "Save price for Roasted Tomato Soup" }));
+
+    expect(await screen.findByText(/at most two decimal places/)).toBeVisible();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveValue(8.001);
+    // The dish form below keeps its own price field clean; only the row that failed is marked.
+    expect(screen.getByLabelText("Price (CAD)")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("filters dishes by name across every category and pauses reordering while it does", async () => {
+    const user = userEvent.setup();
+    const soup = dish("dish-3", "Winter Squash Soup", "14.00", 0, { categoryId: "cat-2" });
+    render(<DishManager initialMedia={[media]} initial={{
+      ...initial,
+      categories: [initial.categories[0], { ...initial.categories[1], dishes: [soup], dishCount: 1 }],
+    }} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    await user.type(screen.getByLabelText("Search dishes by name"), "soup");
+
+    const matches = screen.getAllByRole("listitem");
+    expect(matches).toHaveLength(2);
+    expect(within(matches[0]).getByText("Roasted Tomato Soup")).toBeVisible();
+    expect(within(matches[1]).getByText("Winter Squash Soup")).toBeVisible();
+    // The category each match lives in is named, since the list now spans all of them.
+    expect(within(matches[1]).getByText("Mains")).toBeVisible();
+    expect(screen.getByText(/2 of 3 dishes match/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Move Roasted Tomato Soup down" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Move Prairie Poutine down" })).toBeEnabled();
+  });
+
+  it("says so plainly when no dish matches the search", async () => {
+    const user = userEvent.setup();
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+
+    await user.type(screen.getByLabelText("Search dishes by name"), "tiramisu");
+
+    expect(screen.getByText(/No dish matches “tiramisu”/)).toBeVisible();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("sends the owner back to sign in when the session ends mid-save, keeping the form", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValue(new BrowserApiError(401, { code: "unauthorized" }));
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+
+    await user.type(screen.getByLabelText("Name"), "Bannock Basket");
+    await user.type(screen.getByLabelText("Price (CAD)"), "9.25");
+    await user.click(screen.getByRole("button", { name: "Add dish" }));
+
+    expect(await screen.findByText(/Your session ended/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Sign in again" }))
+      .toHaveAttribute("href", "/admin/login?returnPath=%2Fadmin");
+    expect(screen.getByLabelText("Name")).toHaveValue("Bannock Basket");
+    // Retrying the save cannot help until they are signed in, so it is not offered.
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("re-issues the last save from a Try again button", async () => {
+    const user = userEvent.setup();
+    mocks.mutate.mockRejectedValueOnce(new BrowserApiError(503, { code: "unexpected_error" }));
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+
+    await user.type(screen.getByLabelText("Name"), "Bannock Basket");
+    await user.type(screen.getByLabelText("Price (CAD)"), "9.25");
+    await user.click(screen.getByRole("button", { name: "Add dish" }));
+
+    expect(await screen.findByText(/Saving failed/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(2));
+    expect(mocks.mutate).toHaveBeenLastCalledWith("/api/v1/admin/menu/dishes", "POST",
+      expect.objectContaining({ name: "Bannock Basket", price: 9.25 }), '"draft-4"');
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("warns before the browser walks away from a half-typed dish", async () => {
+    const user = userEvent.setup();
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+
+    const clean = createEvent("beforeunload", window, { cancelable: true });
+    fireEvent(window, clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    await user.type(screen.getByLabelText("Name"), "Bannock Basket");
+
+    const dirty = createEvent("beforeunload", window, { cancelable: true });
+    fireEvent(window, dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+  });
+
+  it("keeps the status bar free of draft version numbers and publication states", () => {
+    render(<DishManager initial={initial} initialMedia={[media]} />);
+    expect(screen.queryByText(/Draft 4/)).toBeNull();
+    expect(screen.queryByText(/succeeded/)).toBeNull();
+    expect(screen.getByText("Last saved")).toBeVisible();
+    expect(screen.getByText("Website up to date")).toBeVisible();
   });
 });
 

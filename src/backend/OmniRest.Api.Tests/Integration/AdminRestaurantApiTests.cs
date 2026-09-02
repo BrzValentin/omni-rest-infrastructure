@@ -805,6 +805,144 @@ public sealed class AdminRestaurantApiTests(PostgresFixture postgres)
         return asset;
     }
 
+    /// <summary>
+    /// Phase 8 website link: a valid https URL survives the admin save, the publication, and the public
+    /// contract, while every shape the owner page must not publish as an anchor is refused with the
+    /// field-level code and leaves the stored value untouched.
+    /// </summary>
+    [Fact]
+    public async Task RestaurantWebsiteUrlReachesThePublicContractAndUnpublishableUrlsAreRejectedWithoutPersisting()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        await CreateOwnerAsync(factory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(current);
+        Assert.Null(current.WebsiteUrl);
+
+        const string valid = "https://prairie-table.example.test/menu?season=summer";
+        var saved = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { WebsiteUrl = valid },
+            await GetAntiforgeryAsync(client),
+            current.ETag);
+        Assert.Equal(valid, saved.Restaurant.WebsiteUrl);
+        Assert.Equal(PublicationStatuses.Succeeded, saved.Publication.Status);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var published = await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant");
+        Assert.Equal(valid, published!.WebsiteUrl);
+        client.DefaultRequestHeaders.Host = "localhost";
+
+        var rejected = new[]
+        {
+            "http://prairie-table.example.test/",                            // not https
+            "https://" + new string('a', 2048) + ".example.test/",           // longer than the column holds
+            "https://owner:secret@prairie-table.example.test/",              // userinfo renders deceptively
+            "prairie-table.example.test/menu"                                // not an absolute URL
+        };
+        foreach (var candidate in rejected)
+        {
+            using var response = await PutWithHeadersAsync(
+                client,
+                "/api/v1/admin/restaurant/profile",
+                ValidProfile("Prairie Table") with { WebsiteUrl = candidate },
+                await GetAntiforgeryAsync(client),
+                saved.Restaurant.ETag);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var problem = await response.Content.ReadFromJsonAsync<ValidationProblemBody>();
+            Assert.Equal("admin_validation", problem?.Code);
+            Assert.NotNull(problem?.Errors);
+            Assert.Equal(["website_url_invalid"], problem.Errors["websiteUrl"]);
+        }
+
+        // A refused save must leave the draft exactly as it was, ETag included, so the owner's next save is
+        // not forced through a spurious concurrency conflict.
+        var unchanged = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.Equal(valid, unchanged!.WebsiteUrl);
+        Assert.Equal(saved.Restaurant.ETag, unchanged.ETag);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        Assert.Equal(
+            valid,
+            (await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant"))!.WebsiteUrl);
+        client.DefaultRequestHeaders.Host = "localhost";
+
+        // Clearing the link is a normal save rather than a validation failure.
+        var cleared = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { WebsiteUrl = "" },
+            await GetAntiforgeryAsync(client),
+            saved.Restaurant.ETag);
+        Assert.Null(cleared.Restaurant.WebsiteUrl);
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        Assert.Null((await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant"))!.WebsiteUrl);
+    }
+
+    /// <summary>
+    /// A second special-hours entry on a date that already has one is the owner's mistake to fix in the form,
+    /// so it comes back as a field-level validation problem naming the date, not as the opaque
+    /// <c>data_conflict</c> the bare unique-index violation used to produce.
+    /// </summary>
+    [Fact]
+    public async Task DuplicateSpecialHoursDateIsReportedAsAFieldLevelCodeRatherThanAnOpaqueDataConflict()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        await CreateOwnerAsync(factory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(current);
+
+        using var created = await SendWithHeadersAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/special-hours",
+            new AdminSpecialHoursRequest("2026-12-25", true, "Christmas Day", []),
+            await GetAntiforgeryAsync(client),
+            current.ETag);
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var first = await created.Content.ReadFromJsonAsync<AdminMutationResponse>();
+        Assert.Single(first!.Restaurant.SpecialHours);
+
+        using var duplicate = await SendWithHeadersAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/special-hours",
+            new AdminSpecialHoursRequest("2026-12-25", false, "Second Christmas entry", [new("11:00", "15:00")]),
+            await GetAntiforgeryAsync(client),
+            first.Restaurant.ETag);
+
+        Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+        var payload = await duplicate.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("data_conflict", payload, StringComparison.Ordinal);
+        var problem = await duplicate.Content.ReadFromJsonAsync<ValidationProblemBody>();
+        Assert.Equal("admin_validation", problem?.Code);
+        Assert.NotNull(problem?.Errors);
+        Assert.Equal(["special_date_duplicate"], problem.Errors["date"]);
+
+        // The refused duplicate wrote nothing: the date still has exactly one entry, still the original.
+        var after = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        var only = Assert.Single(after!.SpecialHours);
+        Assert.Equal("2026-12-25", only.Date);
+        Assert.True(only.IsClosed);
+        Assert.Equal("Christmas Day", only.Note);
+        Assert.Equal(first.Restaurant.ETag, after.ETag);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+        Assert.Equal(1, await db.SpecialHours.CountAsync(
+            item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId));
+    }
+
+    /// <summary>The shape <see cref="ApiProblems.Validation"/> writes, so a test can name one field's codes.</summary>
+    private sealed record ValidationProblemBody(string? Code, IReadOnlyDictionary<string, string[]>? Errors);
+
     private static UpdateRestaurantProfileRequest ValidProfile(string name) => new(
         name, "Seasonal local food", "+12045550123", "+1 204-555-0123", "hello@example.test",
         "America/Winnipeg", new AdminAddressRequest(

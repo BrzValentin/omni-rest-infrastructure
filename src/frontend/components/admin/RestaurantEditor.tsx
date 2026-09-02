@@ -1,28 +1,72 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { BrowserApiError, browserGet, mutate, uploadMedia } from "@/lib/browser-api";
 import { isE164 } from "@/lib/phone";
 import type { AdminMediaAsset, AdminMutation, AdminRestaurant, MainImage, PublicationStatus, RegularHoursDay, SocialLink, SpecialHours } from "@/lib/restaurant-contract";
-import { priceRanges, restaurantTypes } from "@/lib/restaurant-contract";
+import { canadianTimeZones, priceRanges, restaurantTypes } from "@/lib/restaurant-contract";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { DraftStatusBar, publishingLabel, publishingSentence, sessionExpiredNotice } from "./DraftStatusBar";
+import { fieldErrorHelpers } from "./FieldError";
+import { useUnsavedChanges } from "./useUnsavedChanges";
 import styles from "@/app/admin/admin.module.css";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const EMPTY_ADDRESS = { line1: "", line2: "", city: "", region: "", postalCode: "", countryCode: "CA", latitude: null, longitude: null };
 const EMPTY_SPECIAL: Omit<SpecialHours, "id"> = { date: "", isClosed: false, note: "", intervals: [{ opensAt: "09:00", closesAt: "17:00", closesNextDay: false }] };
+const SAVING_FAILED = "Saving failed. Your entries are still here; try again.";
 const ERROR_MESSAGES: Record<string, string> = {
   field_required: "This field is required.", field_length_invalid: "Use a valid value within the allowed length.",
-  phone_e164_invalid: "Use E.164 format, such as +12045550123.", phone_display_invalid: "Provide both phone formats or leave both blank.",
-  email_invalid: "Enter a valid email address.", time_zone_invalid: "Enter a valid IANA time zone.",
+  phone_e164_invalid: "Include the country code, such as +12045550123.", phone_display_invalid: "Provide both phone formats or leave both blank.",
+  email_invalid: "Enter a valid email address.", time_zone_invalid: "Choose a time zone from the list.",
   country_code_invalid: "Use a two-letter uppercase country code.", coordinates_invalid: "Provide both coordinates within valid latitude and longitude ranges.",
   hours_days_duplicate: "Provide each day once.", hours_day_invalid: "Choose a valid day.",
   hours_interval_required: "Add at least one opening period.", hours_interval_limit: "Use no more than 12 periods.",
   hours_interval_invalid: "Use valid, different opening and closing times.", hours_intervals_overlap: "Opening periods cannot overlap.",
   special_date_invalid: "Choose a valid special date.", closed_date_has_intervals: "A closed date cannot contain opening periods.",
+  special_date_duplicate: "You already have special hours on that date. Edit the existing one instead.",
   social_platform_duplicate: "Provide each social platform once.", social_url_invalid: "Use an approved HTTPS URL for this platform.",
+  website_url_invalid: "Enter a full web address that starts with https://, such as https://example.com.",
 };
+
+/**
+ * Plain names for the field paths the API reports errors against.
+ *
+ * The error summary used to print the raw path — `address.line1`, `days.1.intervals` — at an owner
+ * who has never seen the request body those names come from.
+ */
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name", description: "Description", phoneE164: "Phone number", phoneDisplay: "Phone number as shown",
+  email: "Email", timeZone: "Time zone", websiteUrl: "Website", restaurantType: "Establishment type",
+  priceRange: "Price range", "address.line1": "Address line 1", "address.line2": "Address line 2",
+  "address.city": "City", "address.region": "Province or state", "address.postalCode": "Postal code",
+  "address.countryCode": "Country code", "address.coordinates": "Map coordinates", days: "Regular hours",
+  date: "Special date", intervals: "Opening periods", note: "Note", links: "Social links",
+};
+
+/** Plain wording for a media asset's processing state, which is `pending`, `ready`, or `failed`. */
+function imageStatusLabel(status: string): string {
+  switch (status) {
+    case "ready": return "ready to use";
+    case "pending": return "still being prepared";
+    case "failed": return "could not be prepared — upload it again";
+    default: return "not ready yet";
+  }
+}
+
+function messageForRestaurantCodes(codes: string[] | undefined): string | null {
+  if (!codes?.length) return null;
+  return ERROR_MESSAGES[codes[0]] ?? "Enter a valid value.";
+}
+
+function fieldLabel(field: string): string {
+  const known = FIELD_LABELS[field];
+  if (known) return known;
+  if (field.startsWith("days.")) return `${DAYS[Number(field.split(".")[1])] ?? "Regular"} hours`;
+  if (field.startsWith("links.")) return `${field.slice("links.".length)} link`;
+  return field;
+}
 
 function normalizeHours(hours: RegularHoursDay[]): RegularHoursDay[] {
   return DAYS.map((_, dayOfWeek) => hours.find((day) => day.dayOfWeek === dayOfWeek) ?? { dayOfWeek, intervals: [] });
@@ -38,67 +82,6 @@ function focusFirstValidationError(errors: Record<string, string[]>, fallback: H
     }
   }
   fallback?.focus();
-}
-
-function DeleteSpecialDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    const background = Array.from(document.body.children)
-      .filter((element) => !element.contains(dialog))
-      .map((element) => ({
-        element: element as HTMLElement,
-        inert: element.hasAttribute("inert"),
-        ariaHidden: element.getAttribute("aria-hidden"),
-      }));
-    for (const item of background) {
-      item.element.setAttribute("inert", "");
-      item.element.setAttribute("aria-hidden", "true");
-    }
-    cancelRef.current?.focus();
-    return () => {
-      for (const item of background) {
-        if (!item.inert) item.element.removeAttribute("inert");
-        if (item.ariaHidden === null) item.element.removeAttribute("aria-hidden");
-        else item.element.setAttribute("aria-hidden", item.ariaHidden);
-      }
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, []);
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? []);
-    if (focusable.length === 0) return;
-    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
-    const nextIndex = event.shiftKey
-      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
-      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
-    event.preventDefault();
-    focusable[nextIndex].focus();
-  }
-
-  return createPortal(
-    <div className={styles.modalBackdrop}>
-      <div ref={dialogRef} className={styles.confirmation} role="alertdialog" aria-modal="true" aria-labelledby="delete-special-title" aria-describedby="delete-special-description" onKeyDown={handleKeyDown}>
-        <h3 id="delete-special-title">Delete special hours?</h3>
-        <p id="delete-special-description">This removes the date from the draft. Publication starts immediately after confirmation.</p>
-        <div className={styles.buttonRow}>
-          <button ref={cancelRef} className={styles.secondaryButton} type="button" onClick={onCancel}>Cancel</button>
-          <button className={styles.dangerButton} type="button" onClick={onConfirm}>Confirm delete</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
 }
 
 /**
@@ -128,7 +111,7 @@ function ImageSlot({
       <h2 id={titleId}>{title}</h2>
       {current ? (
         <div>
-          <p><strong>Selected:</strong> {current.altText} ({current.processingStatus})</p>
+          <p><strong>Selected:</strong> {current.altText} — {imageStatusLabel(current.processingStatus)}</p>
           {variant && (
             <Image
               unoptimized
@@ -178,6 +161,7 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
   const [profile, setProfile] = useState({
     name: initial.name, description: initial.description ?? "", phoneE164: initial.phoneE164 ?? "",
     phoneDisplay: initial.phoneDisplay ?? "", email: initial.email ?? "", timeZone: initial.timeZone,
+    websiteUrl: initial.websiteUrl ?? "",
     restaurantType: initial.restaurantType ?? "", priceRange: initial.priceRange ?? "",
     address: initial.address ?? EMPTY_ADDRESS,
   });
@@ -193,30 +177,38 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  // The last save that failed for a reason the owner cannot fix by editing a field, kept so the
+  // status bar can offer to re-issue it rather than making them find the button again.
+  const [failedSave, setFailedSave] = useState<
+    { path: string; body: unknown; label: string; method: "POST" | "PUT" | "DELETE" } | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedChanges(dirty);
+
+  const { errorFor, fieldA11y } = fieldErrorHelpers(fieldErrors, "error", messageForRestaurantCodes);
 
   async function save(path: string, body: unknown, label: string, method: "POST" | "PUT" | "DELETE" = "PUT"): Promise<boolean> {
-    setBusy(label); setNotice(null); setConflict(false); setFieldErrors({});
+    setBusy(label); setNotice(null); setConflict(false); setSessionExpired(false); setFieldErrors({}); setFailedSave(null);
     try {
       const result = await mutate<AdminMutation>(path, method, body, restaurant.eTag);
       if (result) {
         setRestaurant(result.restaurant);
-        setNotice(`${label} saved. Publishing ${result.publication.status}.`);
+        setNotice(`${label} saved. ${publishingSentence(result.publication.status)}`);
       } else {
         setNotice(`${label} saved.`);
       }
       setDirty(false);
       return true;
     } catch (error) {
-      if (error instanceof BrowserApiError && error.status === 409) {
+      if (error instanceof BrowserApiError && error.status === 401) {
+        // A lapsed sign-in is not something retrying can fix, and nothing typed is thrown away
+        // while the owner goes and signs in again.
+        setSessionExpired(true);
+        setNotice(sessionExpiredNotice);
+      } else if (error instanceof BrowserApiError && error.status === 409) {
         setConflict(true);
         setNotice("This restaurant changed elsewhere. Your entries are preserved; reload only when you are ready to reapply them.");
       } else if (error instanceof BrowserApiError && error.status === 400 && error.problem.errors) {
@@ -225,16 +217,22 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
         const errors = error.problem.errors;
         window.setTimeout(() => focusFirstValidationError(errors, errorSummaryRef.current), 0);
       } else {
-        setNotice("Saving failed. Your entries are still here; try again.");
+        setFailedSave({ path, body, label, method });
+        setNotice(SAVING_FAILED);
       }
       return false;
     } finally { setBusy(null); }
   }
 
+  function retrySave() {
+    if (!failedSave) return;
+    void save(failedSave.path, failedSave.body, failedSave.label, failedSave.method);
+  }
+
   function submitProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (profile.phoneE164 && !isE164(profile.phoneE164)) {
-      setNotice("Phone must be E.164, for example +12045550123."); return;
+      setNotice("Enter the phone number with its country code, for example +12045550123."); return;
     }
     void save("/api/v1/admin/restaurant/profile", {
       ...profile,
@@ -242,6 +240,7 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       phoneE164: profile.phoneE164 || null,
       phoneDisplay: profile.phoneDisplay || null,
       email: profile.email || null,
+      websiteUrl: profile.websiteUrl.trim() || null,
       restaurantType: profile.restaurantType || null,
       priceRange: profile.priceRange || null,
       address: { ...profile.address, line2: profile.address.line2 || null },
@@ -253,20 +252,6 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       ...entry, intervals: entry.intervals.map((interval, position) => position === index ? { ...interval, [key]: value } : interval),
     }));
     setDirty(true);
-  }
-
-  function errorFor(field: string) {
-    const codes = fieldErrors[field];
-    if (!codes?.length) return null;
-    return <span className={styles.fieldError} id={`error-${field.replaceAll(".", "-")}`}>{ERROR_MESSAGES[codes[0]] ?? "Enter a valid value."}</span>;
-  }
-
-  function fieldA11y(field: string) {
-    return {
-      "data-error-field": field,
-      "aria-invalid": Boolean(fieldErrors[field]),
-      "aria-describedby": fieldErrors[field] ? `error-${field.replaceAll(".", "-")}` : undefined,
-    };
   }
 
   async function removeSpecial(id: string) {
@@ -311,23 +296,29 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
   return (
     <main id="main-content" className={styles.editorMain}>
       <div className={styles.editorHeading}><div><p className={styles.eyebrow}>Draft editor</p><h1>Restaurant</h1></div><a className={styles.secondaryButton} href="/admin/restaurant/preview">Preview draft</a></div>
-      <div className={styles.statusBar} role="status" aria-live="polite">
-        <span>Draft {restaurant.draftVersion}</span>
-        <span>Publication: {restaurant.publicationStatus?.status ?? "not started"}</span>
-        {notice && <strong>{notice}</strong>}
-        {conflict && <button type="button" onClick={() => window.location.reload()}>Reload latest</button>}
-      </div>
-      {Object.keys(fieldErrors).length > 0 && <div className={styles.errorSummary} ref={errorSummaryRef} tabIndex={-1} role="alert" aria-labelledby="error-summary-title"><h2 id="error-summary-title">Please correct these fields</h2><ul>{Object.entries(fieldErrors).map(([field, codes]) => <li key={field}><strong>{field}</strong>: {ERROR_MESSAGES[codes[0]] ?? "Enter a valid value."}</li>)}</ul></div>}
+      <DraftStatusBar
+        publication={restaurant.publicationStatus}
+        notice={notice}
+        conflict={conflict}
+        sessionExpired={sessionExpired}
+        onRetry={failedSave ? retrySave : null}
+        busy={busy !== null}
+      />
+      {Object.keys(fieldErrors).length > 0 && <div className={styles.errorSummary} ref={errorSummaryRef} tabIndex={-1} role="alert" aria-labelledby="error-summary-title"><h2 id="error-summary-title">Please correct these fields</h2><ul>{Object.entries(fieldErrors).map(([field, codes]) => <li key={field}><strong>{fieldLabel(field)}</strong>: {ERROR_MESSAGES[codes[0]] ?? "Enter a valid value."}</li>)}</ul></div>}
 
       <form className={styles.editorSection} onSubmit={submitProfile} onChange={() => setDirty(true)}>
         <h2>Restaurant profile</h2>
         <div className={styles.formGrid}>
           <label>Name<input required maxLength={120} {...fieldA11y("name")} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />{errorFor("name")}</label>
           <label>Description<textarea maxLength={300} {...fieldA11y("description")} value={profile.description} onChange={(e) => setProfile({ ...profile, description: e.target.value })} />{errorFor("description")}</label>
-          <label>Phone (E.164)<input inputMode="tel" placeholder="+12045550123" {...fieldA11y("phoneE164")} value={profile.phoneE164} onChange={(e) => setProfile({ ...profile, phoneE164: e.target.value })} />{errorFor("phoneE164")}</label>
-          <label>Phone display<input inputMode="tel" placeholder="(204) 555-0123" {...fieldA11y("phoneDisplay")} value={profile.phoneDisplay} onChange={(e) => setProfile({ ...profile, phoneDisplay: e.target.value })} />{errorFor("phoneDisplay")}</label>
+          <label>Phone number (with country code)<input inputMode="tel" placeholder="+12045550123" {...fieldA11y("phoneE164")} value={profile.phoneE164} onChange={(e) => setProfile({ ...profile, phoneE164: e.target.value })} />{errorFor("phoneE164")}</label>
+          <label>Phone number as shown to visitors<input inputMode="tel" placeholder="(204) 555-0123" {...fieldA11y("phoneDisplay")} value={profile.phoneDisplay} onChange={(e) => setProfile({ ...profile, phoneDisplay: e.target.value })} />{errorFor("phoneDisplay")}</label>
           <label>Email<input type="email" autoComplete="email" {...fieldA11y("email")} value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />{errorFor("email")}</label>
-          <label>Time zone<input required {...fieldA11y("timeZone")} value={profile.timeZone} onChange={(e) => setProfile({ ...profile, timeZone: e.target.value })} />{errorFor("timeZone")}</label>
+          <label>Website<input type="url" inputMode="url" maxLength={2048} placeholder="https://example.com" autoComplete="url" {...fieldA11y("websiteUrl")} value={profile.websiteUrl} onChange={(e) => setProfile({ ...profile, websiteUrl: e.target.value })} />{errorFor("websiteUrl")}</label>
+          <p>Your own site, if you have one. It has to start with https:// — leave it blank otherwise.</p>
+          {/* The stored value is still an IANA identifier, which is what the backend validates; the
+              owner picks a place instead of typing that key from memory. */}
+          <label>Time zone<select required {...fieldA11y("timeZone")} value={profile.timeZone} onChange={(e) => setProfile({ ...profile, timeZone: e.target.value })}>{canadianTimeZones.some((zone) => zone.id === profile.timeZone) ? null : <option value={profile.timeZone}>{profile.timeZone}</option>}{canadianTimeZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.label}</option>)}</select>{errorFor("timeZone")}</label>
           <label>Establishment type<select {...fieldA11y("restaurantType")} value={profile.restaurantType} onChange={(e) => setProfile({ ...profile, restaurantType: e.target.value })} aria-describedby="restaurant-type-help"><option value="">Not specified</option>{restaurantTypes.map((type) => <option key={type} value={type}>{type.replace(/([a-z])([A-Z])/g, "$1 $2")}</option>)}</select>{errorFor("restaurantType")}</label>
           <p id="restaurant-type-help">Search engines use the most specific type. Choose a cafe, bakery, or bar over the generic restaurant when it fits.</p>
           <label>Price range<select {...fieldA11y("priceRange")} value={profile.priceRange} onChange={(e) => setProfile({ ...profile, priceRange: e.target.value })}><option value="">Not specified</option>{priceRanges.map((range) => <option key={range} value={range}>{range}</option>)}</select>{errorFor("priceRange")}</label>
@@ -365,7 +356,10 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       <section className={styles.editorSection} aria-labelledby="special-title">
         <h2 id="special-title">Special hours</h2>
         <ul className={styles.specialList}>{restaurant.specialHours.map((item) => <li key={item.id}><span><strong>{item.date}</strong> — {item.isClosed ? "Closed" : item.intervals.map((interval) => `${interval.opensAt.slice(0, 5)}–${interval.closesAt.slice(0, 5)}`).join(", ")}{item.note && ` (${item.note})`}</span><span className={styles.buttonRow}><button type="button" onClick={() => { setEditingSpecialId(item.id); setSpecial({ date: item.date, isClosed: item.isClosed, note: item.note, intervals: item.intervals.map((period) => ({ ...period, opensAt: period.opensAt.slice(0, 5), closesAt: period.closesAt.slice(0, 5) })) }); }}>Edit</button><button type="button" aria-label={`Delete special hours for ${item.date}`} onClick={() => setPendingDeleteSpecialId(item.id)}>Delete</button></span></li>)}</ul>
-        {pendingDeleteSpecialId && <DeleteSpecialDialog
+        {pendingDeleteSpecialId && <ConfirmDialog
+          idPrefix="delete-special"
+          title="Delete special hours?"
+          description="This removes the date from the draft. Publication starts immediately after confirmation."
           onCancel={() => setPendingDeleteSpecialId(null)}
           onConfirm={async () => {
             const id = pendingDeleteSpecialId;
@@ -399,9 +393,9 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
 
       <section className={styles.editorSection} aria-labelledby="image-title">
         <h2 id="image-title">Main image</h2>
-        {restaurant.mainImage ? <div><p><strong>Selected:</strong> {restaurant.mainImage.altText} ({restaurant.mainImage.processingStatus})</p>{restaurant.mainImage.variants[0] && <Image unoptimized loader={({ src }) => src} className={styles.imagePreview} src={restaurant.mainImage.variants[0].url} width={restaurant.mainImage.variants[0].width} height={restaurant.mainImage.variants[0].height} alt={restaurant.mainImage.altText} />}</div> : <p>No main image selected.</p>}
+        {restaurant.mainImage ? <div><p><strong>Selected:</strong> {restaurant.mainImage.altText} — {imageStatusLabel(restaurant.mainImage.processingStatus)}</p>{restaurant.mainImage.variants[0] && <Image unoptimized loader={({ src }) => src} className={styles.imagePreview} src={restaurant.mainImage.variants[0].url} width={restaurant.mainImage.variants[0].width} height={restaurant.mainImage.variants[0].height} alt={restaurant.mainImage.altText} />}</div> : <p>No main image selected.</p>}
         <label>Ready image<select value={imageId} aria-describedby="asset-help" onChange={(e) => { const asset = mediaAssets.find((item) => item.id === e.target.value); setImageId(e.target.value); setMediaAltText(asset?.altText ?? ""); setDirty(true); }}><option value="">Choose an image</option>{mediaAssets.map((asset) => <option key={asset.id} value={asset.id}>{asset.altText}</option>)}</select></label>
-        <p id="asset-help">Only validated, tenant-owned images whose processing status is ready are available.</p>
+        <p id="asset-help">Only your own images that have finished processing appear in this list.</p>
         <label>Selected image alt text<input maxLength={200} value={mediaAltText} onChange={(e) => { setMediaAltText(e.target.value); setDirty(true); }} /></label>
         <div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={!imageId || busy !== null} onClick={() => void save("/api/v1/admin/restaurant/main-image", { mediaAssetId: imageId }, "Main image")}>Select image</button><button className={styles.secondaryButton} type="button" disabled={!imageId || !mediaAltText.trim() || busy !== null} onClick={() => void saveMediaAltText()}>Save alt text</button><button type="button" className={styles.dangerButton} disabled={!restaurant.mainImage || busy !== null} onClick={() => void save("/api/v1/admin/restaurant/main-image", undefined, "Main image", "DELETE")}>Remove image</button></div>
         <div className={styles.inlineForm}><label>Upload image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} /></label><label>Upload alt text<input maxLength={200} value={mediaAltText} onChange={(e) => setMediaAltText(e.target.value)} /></label></div>
@@ -442,5 +436,7 @@ export function PublicationPanel({ status: initial }: { status: PublicationStatu
     const timer = window.setInterval(() => { void browserGet<PublicationStatus>(`/api/v1/admin/publication-status/${status.operationId}`).then(setObserved); }, 2500);
     return () => window.clearInterval(timer);
   }, [status]);
-  return <section className={styles.editorSection} aria-labelledby="publication-title"><h2 id="publication-title">Publication</h2>{status ? <><p role="status">Status: <strong>{status.status}</strong>. Attempts: {status.attemptCount}.</p>{status.errorCode && <p>Error: {status.errorCode}</p>}{status.status === "failed" && <button className={styles.primaryButton} type="button" disabled={pending} onClick={async () => { setPending(true); try { const next = await mutate<PublicationStatus>(`/api/v1/admin/publication-status/${status.operationId}/retry`, "POST", {}); if (next) setObserved(next); } finally { setPending(false); } }}>Retry publication</button>}</> : <p>No publication has been requested yet.</p>}</section>;
+  // The owner is told what happened to their website, never the internal state name or the error
+  // code behind it — those are for the logs, not for a restaurant owner reading a status panel.
+  return <section className={styles.editorSection} aria-labelledby="publication-title"><h2 id="publication-title">Your website</h2>{status ? <><p role="status"><strong>{publishingLabel(status)}</strong></p>{status.status === "failed" && <p>We have tried {status.attemptCount === 1 ? "once" : `${status.attemptCount} times`}. Try again below, and contact support if it keeps failing.</p>}{status.status === "failed" && <button className={styles.primaryButton} type="button" disabled={pending} onClick={async () => { setPending(true); try { const next = await mutate<PublicationStatus>(`/api/v1/admin/publication-status/${status.operationId}/retry`, "POST", {}); if (next) setObserved(next); } finally { setPending(false); } }}>Retry publication</button>}</> : <p>Your changes have not been published yet.</p>}</section>;
 }

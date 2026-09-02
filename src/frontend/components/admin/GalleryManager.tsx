@@ -1,16 +1,20 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState, type DragEvent, type FormEvent } from "react";
 
 import {
+  describeUnusablePhoto,
   galleryAltTextMaxLength,
   galleryCaptionMaxLength,
+  galleryImageAccept,
   moveGalleryImage,
   type AdminGallery,
   type AdminGalleryImage,
 } from "@/lib/gallery-admin-contract";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { DraftStatusBar } from "./DraftStatusBar";
+import { fieldErrorHelpers } from "./FieldError";
 import { messageForGalleryCodes, useGalleryDraft } from "./useGalleryDraft";
 import styles from "@/app/admin/admin.module.css";
 
@@ -33,87 +37,16 @@ function thumbnailBox(width: number, height: number) {
   };
 }
 
-function DeletePhotoDialog({ image, onCancel, onConfirm }: {
-  image: AdminGalleryImage;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    const background = Array.from(document.body.children)
-      .filter((element) => !element.contains(dialog))
-      .map((element) => ({
-        element: element as HTMLElement,
-        inert: element.hasAttribute("inert"),
-        ariaHidden: element.getAttribute("aria-hidden"),
-      }));
-    for (const item of background) {
-      item.element.setAttribute("inert", "");
-      item.element.setAttribute("aria-hidden", "true");
-    }
-    cancelRef.current?.focus();
-    return () => {
-      for (const item of background) {
-        if (!item.inert) item.element.removeAttribute("inert");
-        if (item.ariaHidden === null) item.element.removeAttribute("aria-hidden");
-        else item.element.setAttribute("aria-hidden", item.ariaHidden);
-      }
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, []);
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? []);
-    if (focusable.length === 0) return;
-    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
-    const nextIndex = event.shiftKey
-      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
-      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
-    event.preventDefault();
-    focusable[nextIndex].focus();
-  }
-
-  return createPortal(
-    <div className={styles.modalBackdrop}>
-      <div
-        ref={dialogRef}
-        className={styles.confirmation}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-photo-title"
-        aria-describedby="delete-photo-description"
-        onKeyDown={handleKeyDown}
-      >
-        <h3 id="delete-photo-title">Delete “{image.altText}”?</h3>
-        <p id="delete-photo-description">
-          This removes the photo from the gallery and publishes immediately. The remaining photos keep their order.
-          To hide a photo temporarily instead, use Hide.
-        </p>
-        <div className={styles.buttonRow}>
-          <button ref={cancelRef} className={styles.secondaryButton} type="button" onClick={onCancel}>Cancel</button>
-          <button className={styles.dangerButton} type="button" onClick={onConfirm}>Confirm delete</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export function GalleryManager({ initial }: { initial: AdminGallery }) {
-  const { gallery, busy, notice, setNotice, conflict, fieldErrors, save, upload } = useGalleryDraft(initial);
+  const {
+    gallery, busy, notice, setNotice, conflict, sessionExpired, fieldErrors, setDirty,
+    save, upload, replacePhoto, retrySave,
+  } = useGalleryDraft(initial);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadAltText, setUploadAltText] = useState("");
   const [uploadCaption, setUploadCaption] = useState("");
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
+  const [dropActive, setDropActive] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAltText, setEditAltText] = useState("");
   const [editCaption, setEditCaption] = useState("");
@@ -125,19 +58,15 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
   const maximum = gallery.maximumImages;
   const atLimit = images.length >= maximum;
   const disabled = busy !== null;
+  const { errorFor, fieldA11y } = fieldErrorHelpers(fieldErrors, "gallery-error", messageForGalleryCodes);
 
-  function errorFor(field: string) {
-    const text = messageForGalleryCodes(fieldErrors[field]);
-    if (!text) return null;
-    return <span className={styles.fieldError} id={`gallery-error-${field}`}>{text}</span>;
-  }
-
-  function fieldA11y(field: string) {
-    return {
-      "data-error-field": field,
-      "aria-invalid": Boolean(fieldErrors[field]),
-      "aria-describedby": fieldErrors[field] ? `gallery-error-${field}` : undefined,
-    };
+  /** The one gate every chosen photo passes, whether it arrived by picker or by drop. */
+  function acceptFile(file: File | null | undefined) {
+    if (!file) return;
+    const problem = describeUnusablePhoto(file);
+    setFileProblem(problem);
+    setUploadFile(problem ? null : file);
+    if (!problem) setDirty(true);
   }
 
   function submitUpload(event: FormEvent<HTMLFormElement>) {
@@ -150,8 +79,25 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
         setUploadFile(null);
         setUploadAltText("");
         setUploadCaption("");
+        setFileProblem(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
+    })();
+  }
+
+  /**
+   * Swaps the picture behind an existing entry without making the owner delete and re-add it, which
+   * would have cost them the alt text, the caption, and the position.
+   */
+  function replaceWith(image: AdminGalleryImage, file: File | null | undefined) {
+    if (!file) return;
+    const problem = describeUnusablePhoto(file);
+    if (problem) {
+      setNotice(problem);
+      return;
+    }
+    void (async () => {
+      if (await replacePhoto(image, file)) setNotice(`Photo replaced for “${image.altText}”.`);
     })();
   }
 
@@ -211,13 +157,16 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
         <a className={styles.secondaryButton} href="/admin/restaurant/preview">Preview draft</a>
       </div>
 
-      <div className={styles.statusBar} role="status" aria-live="polite">
-        <span>Draft {gallery.draftVersion}</span>
-        <span>Publication: {gallery.publicationStatus?.status ?? "not started"}</span>
+      <DraftStatusBar
+        publication={gallery.publicationStatus}
+        notice={notice}
+        conflict={conflict}
+        sessionExpired={sessionExpired}
+        onRetry={retrySave}
+        busy={disabled}
+      >
         <span>{images.length} of {maximum} photos used</span>
-        {notice && <strong>{notice}</strong>}
-        {conflict && <button type="button" onClick={() => window.location.reload()}>Reload latest</button>}
-      </div>
+      </DraftStatusBar>
 
       <section className={styles.editorSection} aria-labelledby="gallery-list-title">
         <h2 id="gallery-list-title">Gallery photos</h2>
@@ -251,7 +200,7 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
                 {...thumbnailBox(image.width, image.height)}
               />
               {editingId === image.id ? (
-                <form className={styles.inlineForm} onSubmit={submitEdit}>
+                <form className={styles.inlineForm} onSubmit={submitEdit} onChange={() => setDirty(true)}>
                   <label>
                     Photo alt text
                     <input
@@ -320,6 +269,21 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
                     >
                       Edit
                     </button>
+                    {/* Replacing uploads the new photo before removing the old one, so it needs a free
+                        slot. On a full gallery the owner deletes first, exactly as they do to add. */}
+                    <span className={styles.replaceControl}>
+                      <span aria-hidden="true">Replace photo</span>
+                      <input
+                        type="file"
+                        accept={galleryImageAccept}
+                        disabled={disabled || atLimit}
+                        aria-label={`Replace ${image.altText}`}
+                        onChange={(event) => {
+                          replaceWith(image, event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </span>
                     <button
                       type="button"
                       className={styles.dangerButton}
@@ -338,8 +302,11 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
       </section>
 
       {pendingDelete && (
-        <DeletePhotoDialog
-          image={pendingDelete}
+        <ConfirmDialog
+          idPrefix="delete-photo"
+          title={`Delete “${pendingDelete.altText}”?`}
+          description={"This removes the photo from the gallery and publishes immediately. The remaining photos "
+            + "keep their order. To hide a photo temporarily instead, use Hide."}
           onCancel={() => setPendingDelete(null)}
           onConfirm={() => {
             const image = pendingDelete;
@@ -349,7 +316,12 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
         />
       )}
 
-      <form className={styles.editorSection} onSubmit={submitUpload} aria-labelledby="gallery-upload-title">
+      <form
+        className={styles.editorSection}
+        onSubmit={submitUpload}
+        onChange={() => setDirty(true)}
+        aria-labelledby="gallery-upload-title"
+      >
         <h2 id="gallery-upload-title">Add a photo</h2>
         <p>
           A gallery holds up to {maximum} photos. Alt text is required so the photo is described to visitors using a
@@ -357,18 +329,37 @@ export function GalleryManager({ initial }: { initial: AdminGallery }) {
         </p>
         {atLimit && <p className={styles.fieldError}>This gallery is full. Delete a photo before uploading another.</p>}
         <div className={styles.formGrid}>
-          <label>
-            Photo file
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              disabled={atLimit}
-              {...fieldA11y("file")}
-              onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-            />
-            {errorFor("file")}
-          </label>
+          {/* The drop zone wraps the file picker rather than replacing it: dragging is a shortcut,
+              never the only way in, so the keyboard path stays exactly what it was. */}
+          <div
+            role="group"
+            aria-label="Photo upload area"
+            className={dropActive ? `${styles.dropZone} ${styles.dropZoneActive}` : styles.dropZone}
+            onDragEnter={(event) => { event.preventDefault(); if (!atLimit) setDropActive(true); }}
+            onDragOver={(event) => { event.preventDefault(); if (!atLimit) setDropActive(true); }}
+            onDragLeave={() => setDropActive(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDropActive(false);
+              if (!atLimit) acceptFile(event.dataTransfer?.files?.[0]);
+            }}
+          >
+            <p>Drag a photo here, or choose a file.</p>
+            <label>
+              Photo file
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={galleryImageAccept}
+                disabled={atLimit}
+                {...fieldA11y("file")}
+                onChange={(event) => acceptFile(event.target.files?.[0] ?? null)}
+              />
+              {errorFor("file")}
+            </label>
+            {uploadFile && <p>Ready to upload: {uploadFile.name}</p>}
+            {fileProblem && <p className={styles.fieldError}>{fileProblem}</p>}
+          </div>
           <label>
             Alt text
             <input

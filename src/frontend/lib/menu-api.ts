@@ -47,6 +47,10 @@ function requestPublicMenu(url: URL, host: string): Promise<{ status: number; bo
           }
           chunks.push(chunk);
         });
+        // The size guard above destroys the *response*, and a mid-stream transport fault surfaces
+        // there too. Only `request` had an error listener, so both paths ended with a promise that
+        // never settled: the render hung until the platform killed it, with no error to show.
+        response.on("error", reject);
         response.on("end", () =>
           resolve({ status: response.statusCode ?? 502, body: Buffer.concat(chunks).toString("utf8") }),
         );

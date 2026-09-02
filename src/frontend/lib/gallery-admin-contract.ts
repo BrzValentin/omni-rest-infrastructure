@@ -32,6 +32,30 @@ export const galleryCaptionMaxLength = 300;
 /** Fallback for an older snapshot that predates `maximumImages`; the server value always wins. */
 export const galleryMaximumImages = 50;
 
+/** The formats the server's media validator accepts, and the `accept` attribute built from them. */
+export const galleryImageTypes = ["image/jpeg", "image/png", "image/webp"] as const;
+export const galleryImageAccept = galleryImageTypes.join(",");
+const acceptedImageTypes = new Set<string>(galleryImageTypes);
+
+/**
+ * Mirrors the server's default media size limit (`LocalMediaStorageOptions.MaximumBytes`, 5 MiB).
+ * The server stays the authority — a deployment may configure a smaller limit — but rejecting an
+ * obviously oversized file here saves the owner a slow upload that was always going to be refused.
+ */
+export const galleryMaximumFileSizeBytes = 5 * 1024 * 1024;
+
+/**
+ * Explains, in the owner's words, why a chosen file cannot be uploaded — or null when it can.
+ *
+ * The file picker and the drop zone both go through this, so dragging a photo in is held to exactly
+ * the same rules as choosing one, and the wording matches what the server would have said.
+ */
+export function describeUnusablePhoto(file: File): string | null {
+  if (!acceptedImageTypes.has(file.type)) return "Choose a JPG, PNG, or WebP photo.";
+  if (file.size > galleryMaximumFileSizeBytes) return "Choose a photo smaller than 5 MB.";
+  return null;
+}
+
 /**
  * Moves one photo within the gallery and returns the resulting id order.
  * Shares the menu reorder helper so both surfaces stage identical payloads.

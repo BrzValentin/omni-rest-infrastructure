@@ -15,7 +15,8 @@
     "test:e2e": "playwright test --grep-invert @perf",
     "test:e2e:design": "playwright test --config=playwright.design.config.ts",
     "test:e2e:real": "playwright test --config=playwright.real.config.ts",
-    "test:perf": "playwright test e2e/menu.perf.spec.ts --project=chromium && node scripts/perf-report.mjs"
+    "test:perf": "playwright test e2e/menu.perf.spec.ts --project=chromium && node scripts/perf-report.mjs",
+    "test:lighthouse": "lhci autorun --config=lighthouserc.json"
   },
   "dependencies": {
     "next": "16.2.12",
@@ -25,13 +26,14 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "1.62.1",
-    "@types/node": "26.1.2",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
     "@testing-library/jest-dom": "7.0.0",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
     "@vitest/coverage-v8": "4.1.10",
     "axe-core": "4.12.1",
     "eslint": "9.39.5",

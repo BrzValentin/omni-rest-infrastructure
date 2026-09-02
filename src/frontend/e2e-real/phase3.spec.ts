@@ -34,10 +34,11 @@ test("real owner workflow persists and publishes every Phase 3 restaurant field"
 
   await page.getByLabel("Name").fill("Real Prairie Kitchen");
   await page.getByLabel("Description").fill("Real full-stack seasonal kitchen.");
-  await page.getByLabel("Phone (E.164)").fill("+12045550199");
-  await page.getByLabel("Phone display").fill("(204) 555-0199");
+  await page.getByLabel("Phone number (with country code)").fill("+12045550199");
+  await page.getByLabel("Phone number as shown to visitors").fill("(204) 555-0199");
   await page.getByLabel("Email").fill("hello@realprairie.test");
-  await page.getByLabel("Time zone").fill("America/Winnipeg");
+  // Time zone is a select now, so it is chosen rather than typed.
+  await page.getByLabel("Time zone").selectOption("America/Winnipeg");
   await page.getByLabel("Address line 1").fill("123 Real Stack Avenue");
   await page.getByLabel("Address line 2").fill("Suite 7");
   await page.getByLabel("City").fill("Winnipeg");

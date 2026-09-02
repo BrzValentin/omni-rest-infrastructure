@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -135,7 +135,7 @@ describe("GalleryManager", () => {
     await waitFor(() => expect(mocks.uploadGalleryPhoto).toHaveBeenCalledWith(
       file, "Front window in winter", "Snow on the sill", '"draft-4"'));
     expect(screen.getByLabelText("Alt text")).toHaveValue("");
-    expect(screen.getByText(/Photo saved\. Publishing succeeded\./)).toBeVisible();
+    expect(screen.getByText(/Photo saved\. Your website is up to date\./)).toBeVisible();
   });
 
   it("sends a null caption when the caption field is left blank", async () => {
@@ -273,5 +273,123 @@ describe("GalleryManager", () => {
     render(<GalleryManager initial={{ ...initial, images: [] }} />);
     expect(screen.getByText(/No photos yet/)).toBeVisible();
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("takes a photo dropped onto the upload form and uploads it like a chosen one", async () => {
+    const user = userEvent.setup();
+    render(<GalleryManager initial={initial} />);
+
+    const zone = screen.getByRole("group", { name: "Photo upload area" });
+    fireEvent.drop(zone, { dataTransfer: { files: [photoFile("front-window.png")] } });
+
+    expect(await screen.findByText("Ready to upload: front-window.png")).toBeVisible();
+    await user.type(screen.getByLabelText("Alt text"), "Front window in winter");
+    await user.click(screen.getByRole("button", { name: "Upload photo" }));
+
+    await waitFor(() => expect(mocks.uploadGalleryPhoto).toHaveBeenCalledWith(
+      expect.any(File), "Front window in winter", null, '"draft-4"'));
+  });
+
+  it("holds a dropped file to the same rules as the file picker", () => {
+    render(<GalleryManager initial={initial} />);
+    const zone = screen.getByRole("group", { name: "Photo upload area" });
+
+    fireEvent.drop(zone, { dataTransfer: { files: [new File(["x"], "menu.pdf", { type: "application/pdf" })] } });
+    expect(screen.getByText("Choose a JPG, PNG, or WebP photo.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Upload photo" })).toBeDisabled();
+
+    const huge = new File([new Uint8Array(6 * 1024 * 1024)], "huge.png", { type: "image/png" });
+    fireEvent.drop(zone, { dataTransfer: { files: [huge] } });
+    expect(screen.getByText("Choose a photo smaller than 5 MB.")).toBeVisible();
+    expect(mocks.uploadGalleryPhoto).not.toHaveBeenCalled();
+  });
+
+  it("replaces the picture behind a photo, keeping its words and its position", async () => {
+    const user = userEvent.setup();
+    const replacement = image("d", "Sunny patio seating", 4, { caption: "Patio seating opens in May." });
+    mocks.uploadGalleryPhoto.mockResolvedValue(mutationWith([...initial.images, replacement]));
+    mocks.mutate.mockResolvedValue(mutationWith([initial.images[1], initial.images[2], replacement]));
+    render(<GalleryManager initial={initial} />);
+
+    await user.upload(screen.getByLabelText("Replace Sunny patio seating"), photoFile("new-patio.png"));
+
+    // The alt text and caption travel with the replacement, so nothing the owner wrote is retyped.
+    await waitFor(() => expect(mocks.uploadGalleryPhoto).toHaveBeenCalledWith(
+      expect.any(File), "Sunny patio seating", "Patio seating opens in May.", '"draft-4"'));
+    expect(mocks.mutate).toHaveBeenNthCalledWith(
+      1, "/api/v1/admin/gallery/a", "DELETE", undefined, '"draft-5"');
+    // ...and the new photo is moved back to where the old one sat, rather than landing at the end.
+    await waitFor(() => expect(mocks.mutate).toHaveBeenNthCalledWith(
+      2, "/api/v1/admin/gallery/reorder", "PATCH", { imageIds: ["d", "b", "c"] }, '"draft-5"'));
+    expect(await screen.findByText(/Photo replaced for “Sunny patio seating”/)).toBeVisible();
+  });
+
+  it("refuses an unusable replacement without touching the photo already there", async () => {
+    const user = userEvent.setup();
+    render(<GalleryManager initial={initial} />);
+
+    await user.upload(
+      screen.getByLabelText("Replace Sunny patio seating"),
+      new File([new Uint8Array(6 * 1024 * 1024)], "huge.png", { type: "image/png" }),
+    );
+
+    expect(await screen.findByText("Choose a photo smaller than 5 MB.")).toBeVisible();
+    expect(mocks.uploadGalleryPhoto).not.toHaveBeenCalled();
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
+  it("cannot replace on a full gallery, because replacing needs a free slot first", () => {
+    const full = Array.from({ length: 50 }, (_, index) => image(`p${index}`, `Photo ${index + 1}`, index + 1));
+    render(<GalleryManager initial={{ ...initial, images: full }} />);
+    expect(screen.getByLabelText("Replace Photo 1")).toBeDisabled();
+  });
+
+  it("sends the owner back to sign in when the session ends mid-upload", async () => {
+    const user = userEvent.setup();
+    mocks.uploadGalleryPhoto.mockRejectedValue(new BrowserApiError(401, { code: "unauthorized" }));
+    render(<GalleryManager initial={initial} />);
+
+    await user.upload(screen.getByLabelText("Photo file"), photoFile());
+    await user.type(screen.getByLabelText("Alt text"), "Front window");
+    await user.click(screen.getByRole("button", { name: "Upload photo" }));
+
+    expect(await screen.findByText(/Your session ended/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Sign in again" }))
+      .toHaveAttribute("href", "/admin/login?returnPath=%2Fadmin");
+    expect(screen.getByLabelText("Alt text")).toHaveValue("Front window");
+  });
+
+  it("re-issues a failed upload from a Try again button", async () => {
+    const user = userEvent.setup();
+    mocks.uploadGalleryPhoto.mockRejectedValueOnce(new BrowserApiError(503, { code: "unexpected_error" }));
+    render(<GalleryManager initial={initial} />);
+
+    await user.upload(screen.getByLabelText("Photo file"), photoFile());
+    await user.type(screen.getByLabelText("Alt text"), "Front window");
+    await user.click(screen.getByRole("button", { name: "Upload photo" }));
+
+    expect(await screen.findByText(/Saving failed/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(mocks.uploadGalleryPhoto).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("warns before the browser walks away from a photo that was never uploaded", async () => {
+    const user = userEvent.setup();
+    render(<GalleryManager initial={initial} />);
+
+    await user.type(screen.getByLabelText("Alt text"), "Front window");
+
+    const leaving = createEvent("beforeunload", window, { cancelable: true });
+    fireEvent(window, leaving);
+    expect(leaving.defaultPrevented).toBe(true);
+  });
+
+  it("keeps the status bar free of draft version numbers and publication states", () => {
+    render(<GalleryManager initial={initial} />);
+    expect(screen.queryByText(/Draft 4/)).toBeNull();
+    expect(screen.getByText("Last saved")).toBeVisible();
+    expect(screen.getByText("Website up to date")).toBeVisible();
   });
 });

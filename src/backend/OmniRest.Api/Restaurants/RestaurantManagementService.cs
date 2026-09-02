@@ -47,6 +47,7 @@ public sealed partial class RestaurantManagementService(
     ILocalMediaStorage mediaStorage,
     IGalleryThumbnailFactory thumbnailFactory,
     TimeProvider timeProvider,
+    Microsoft.Extensions.Options.IOptions<PublicationDispatcherOptions> dispatcherOptions,
     ILogger<RestaurantManagementService> logger) : IRestaurantManagementService
 {
     public async Task<ManagementResult<AdminRestaurantResponse>> ReadAsync(
@@ -70,6 +71,7 @@ public sealed partial class RestaurantManagementService(
         restaurant.PhoneE164 = request.PhoneE164;
         restaurant.PhoneDisplay = request.PhoneDisplay?.Trim();
         restaurant.Email = request.Email?.Trim();
+        restaurant.WebsiteUrl = string.IsNullOrWhiteSpace(request.WebsiteUrl) ? null : request.WebsiteUrl.Trim();
         restaurant.RestaurantType = string.IsNullOrEmpty(request.RestaurantType) ? null : request.RestaurantType;
         restaurant.PriceRange = string.IsNullOrEmpty(request.PriceRange) ? null : request.PriceRange;
         restaurant.Settings.TimeZoneId = request.TimeZone;
@@ -123,7 +125,7 @@ public sealed partial class RestaurantManagementService(
         var date = ParseDate(request.Date);
         if (restaurant.SpecialHours.Any(item => item.Date == date))
         {
-            return new ManagementFailure(409, "special_date_duplicate", "Special hours already exist for that date");
+            return SpecialDateDuplicate();
         }
         var added = CreateSpecial(restaurant, Guid.NewGuid(), request);
         restaurant.SpecialHours.Add(added);
@@ -147,7 +149,7 @@ public sealed partial class RestaurantManagementService(
         var date = ParseDate(request.Date);
         if (restaurant.SpecialHours.Any(item => item.Id != id && item.Date == date))
         {
-            return new ManagementFailure(409, "special_date_duplicate", "Special hours already exist for that date");
+            return SpecialDateDuplicate();
         }
         dbContext.SpecialHourIntervals.RemoveRange(special.Intervals.ToArray());
         special.Intervals.Clear();
@@ -498,17 +500,30 @@ public sealed partial class RestaurantManagementService(
             return ManagementResult<MutationOutcome>.Failed(
                 new ManagementFailure(409, "concurrency_conflict", "The draft changed; reload before saving"));
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
             await transaction.RollbackAsync(cancellationToken);
+
+            // Two owners can each pass the in-memory duplicate check and race to commit the same special
+            // date. The loser must not learn about it as an opaque data_conflict: the unique index is the
+            // same rule the field-level check enforces, so it reports the same field-level code.
             return ManagementResult<MutationOutcome>.Failed(
-                new ManagementFailure(409, "data_conflict", "The requested change conflicts with existing restaurant data"));
+                IsSpecialDateConflict(exception)
+                    ? SpecialDateDuplicate()
+                    : new ManagementFailure(409, "data_conflict", "The requested change conflicts with existing restaurant data"));
         }
 
         // The transaction is committed from here on: everything below can still fail, but the rows stay.
         onCommitted?.Invoke();
 
-        await dispatcher.DispatchAsync(operationId, cancellationToken);
+        // Immediate by default (PR-24 Task 11): the inline post-commit dispatch is what makes a saved
+        // change visible on the public site before the response is written. A configured
+        // PublicationDelay hands timing to the outbox worker instead, and the mutation then reports the
+        // operation as pending rather than succeeded.
+        if (dispatcherOptions.Value.PublicationDelay <= TimeSpan.Zero)
+        {
+            await dispatcher.DispatchAsync(operationId, cancellationToken);
+        }
         dbContext.ChangeTracker.Clear();
         var saved = await LoadAggregateAsync(access.RestaurantId, tracking: false, cancellationToken);
         var status = await dbContext.PublicationOutbox.AsNoTracking().SingleAsync(item => item.OperationId == operationId, cancellationToken);
@@ -577,7 +592,8 @@ public sealed partial class RestaurantManagementService(
             restaurant.RestaurantType,
             restaurant.PriceRange,
             ToAdminImage(restaurant.LogoMediaAsset),
-            ToAdminImage(restaurant.CoverMediaAsset));
+            ToAdminImage(restaurant.CoverMediaAsset),
+            restaurant.WebsiteUrl);
     }
 
     private static AdminMainImageResponse? ToAdminImage(MediaAssetEntity? asset) => asset is null ? null : new(
@@ -660,6 +676,21 @@ public sealed partial class RestaurantManagementService(
         "website_design_unavailable",
         "The selected website design is not available",
         Errors: new Dictionary<string, string[]> { ["designId"] = ["website_design_unavailable"] });
+    /// <summary>
+    /// The unique index behind a second special-hours row on the same date. Named here so the service can
+    /// tell that specific constraint apart from every other write conflict.
+    /// </summary>
+    private const string SpecialDateUniqueIndex = "IX_special_hours_restaurant_id_date";
+
+    private static bool IsSpecialDateConflict(DbUpdateException exception) =>
+        exception.InnerException is Npgsql.PostgresException { SqlState: "23505" } postgres &&
+        string.Equals(postgres.ConstraintName, SpecialDateUniqueIndex, StringComparison.Ordinal);
+
+    private static ManagementFailure SpecialDateDuplicate() => new(
+        409,
+        "special_date_duplicate",
+        "Special hours already exist for that date",
+        Errors: new Dictionary<string, string[]> { ["date"] = ["special_date_duplicate"] });
     private static ManagementFailure PublicationRetrySuperseded() => new(
         409,
         "publication_retry_superseded",
@@ -670,6 +701,16 @@ public sealed partial class RestaurantManagementService(
 public static class PublicationOrdering
 {
     public const string SupersededErrorCode = "publication_superseded";
+
+    /// <summary>
+    /// Written once a publication has burned <see cref="PublicationDispatcherOptions.MaxAttempts"/>
+    /// attempts. It is terminal to the worker: permanently invalid content stops being re-queued and the
+    /// exhausted state is observable through the publication-status contract.
+    /// </summary>
+    public const string RetryExhaustedErrorCode = "publication_retry_exhausted";
+
+    /// <summary>The transient failure code the worker retries automatically inside its attempt budget.</summary>
+    public const string DispatchFailedErrorCode = "publication_dispatch_failed";
 
     public static bool IsSuperseded(
         long operationDraftVersion,
@@ -712,6 +753,24 @@ public sealed class PublicationDispatcherOptions
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(2);
     public TimeSpan ClaimLease { get; init; } = TimeSpan.FromSeconds(30);
     public int BatchSize { get; init; } = 20;
+
+    /// <summary>
+    /// How long a freshly written outbox row waits before the worker may claim it. The default of zero
+    /// keeps publication immediate: the mutation dispatches inline post-commit so a saved change is
+    /// visible on the public site straight away (PR-24 Task 11). Any positive value hands timing to
+    /// <see cref="PublicationOutboxWorker"/> instead, and the mutation response then reports
+    /// <c>pending</c> rather than <c>succeeded</c>.
+    /// </summary>
+    public TimeSpan PublicationDelay { get; init; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Total attempts a single publication may consume before the worker gives up on it and writes
+    /// <see cref="PublicationOrdering.RetryExhaustedErrorCode"/>. An owner can still retry by hand.
+    /// </summary>
+    public int MaxAttempts { get; init; } = 5;
+
+    /// <summary>How long a failed row rests before the worker retries it automatically.</summary>
+    public TimeSpan RetryBackoff { get; init; } = TimeSpan.FromSeconds(30);
 }
 
 public sealed class InProcessPublicationDispatcher(
@@ -725,11 +784,22 @@ public sealed class InProcessPublicationDispatcher(
     public async Task DispatchAsync(Guid operationId, CancellationToken cancellationToken)
     {
         var claimedAt = timeProvider.GetUtcNow();
+        var leaseCutoff = claimedAt - options.Value.ClaimLease;
+        var retryCutoff = claimedAt - options.Value.RetryBackoff;
+        var maxAttempts = options.Value.MaxAttempts;
         dbContext.ChangeTracker.Clear();
+
+        // A failed row is claimable again once it has rested for the backoff and still has attempts left.
+        // Superseded and exhausted rows are terminal: re-claiming them would only burn the attempt budget.
         var claimed = await dbContext.PublicationOutbox
             .Where(item => item.OperationId == operationId &&
                 (item.Status == PublicationStatuses.Pending ||
-                 item.Status == PublicationStatuses.Processing && item.UpdatedAt <= claimedAt - options.Value.ClaimLease))
+                 item.Status == PublicationStatuses.Processing && item.UpdatedAt <= leaseCutoff ||
+                 item.Status == PublicationStatuses.Failed &&
+                     item.ErrorCode != PublicationOrdering.SupersededErrorCode &&
+                     item.ErrorCode != PublicationOrdering.RetryExhaustedErrorCode &&
+                     item.AttemptCount < maxAttempts &&
+                     item.UpdatedAt <= retryCutoff))
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.Status, PublicationStatuses.Processing)
                 .SetProperty(item => item.AttemptCount, item => item.AttemptCount + 1)
@@ -739,19 +809,25 @@ public sealed class InProcessPublicationDispatcher(
             return;
         }
 
+        var claimedState = await dbContext.PublicationOutbox.AsNoTracking()
+            .Where(item => item.OperationId == operationId)
+            .Select(item => new { item.RestaurantId, item.DraftVersion, item.AttemptCount })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (claimedState is null)
+        {
+            return;
+        }
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        logger.LogInformation(
+            "Publication operation {OperationId} claimed for restaurant {RestaurantId} at draft version {DraftVersion} on attempt {AttemptCount}.",
+            operationId, claimedState.RestaurantId, claimedState.DraftVersion, claimedState.AttemptCount);
+
         try
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-            var restaurantId = await dbContext.PublicationOutbox.AsNoTracking()
-                .Where(item => item.OperationId == operationId)
-                .Select(item => (Guid?)item.RestaurantId)
-                .SingleOrDefaultAsync(cancellationToken);
-            if (restaurantId is null)
-            {
-                return;
-            }
+            var restaurantId = claimedState.RestaurantId;
             var restaurantDraftVersion = await PublicationOrdering.LockRestaurantDraftVersionAsync(
-                dbContext, restaurantId.Value, cancellationToken);
+                dbContext, restaurantId, cancellationToken);
             dbContext.ChangeTracker.Clear();
             var outbox = await dbContext.PublicationOutbox.SingleOrDefaultAsync(
                 item => item.OperationId == operationId, cancellationToken);
@@ -774,8 +850,9 @@ public sealed class InProcessPublicationDispatcher(
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 logger.LogInformation(
-                    "Publication operation {OperationId} was ignored because draft version {DraftVersion} was superseded.",
-                    operationId, outbox.DraftVersion);
+                    "Publication operation {OperationId} for restaurant {RestaurantId} was ignored because draft version {DraftVersion} was superseded on attempt {AttemptCount} after {ElapsedMilliseconds} ms.",
+                    operationId, outbox.RestaurantId, outbox.DraftVersion, outbox.AttemptCount,
+                    elapsed.Elapsed.TotalMilliseconds);
                 return;
             }
             if (failurePolicy.ShouldFail(operationId))
@@ -817,24 +894,44 @@ public sealed class InProcessPublicationDispatcher(
             {
                 cache.Remove($"public-menu:{outbox.RestaurantId:N}:{oldVersion.Value}");
             }
+            logger.LogInformation(
+                "Publication operation {OperationId} published restaurant {RestaurantId} at draft version {DraftVersion} on attempt {AttemptCount} in {ElapsedMilliseconds} ms.",
+                operationId, outbox.RestaurantId, outbox.DraftVersion, outbox.AttemptCount,
+                elapsed.Elapsed.TotalMilliseconds);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            logger.LogWarning("Publication operation {OperationId} failed with safe code {ErrorCode}.",
-                operationId, "publication_dispatch_failed");
             dbContext.ChangeTracker.Clear();
             var failed = await dbContext.PublicationOutbox.SingleOrDefaultAsync(item => item.OperationId == operationId, cancellationToken);
+            var errorCode = PublicationOrdering.DispatchFailedErrorCode;
             if (failed is not null && failed.Status == PublicationStatuses.Processing)
             {
+                // AttemptCount was already incremented by the claim, so this compares attempts consumed
+                // against the budget: the last permitted attempt lands on the terminal code, not on a
+                // transient one the worker would keep re-queuing.
+                var failedAt = timeProvider.GetUtcNow();
+                var exhausted = failed.AttemptCount >= maxAttempts;
+                errorCode = exhausted
+                    ? PublicationOrdering.RetryExhaustedErrorCode
+                    : PublicationOrdering.DispatchFailedErrorCode;
                 failed.Status = PublicationStatuses.Failed;
-                failed.ErrorCode = "publication_dispatch_failed";
-                failed.UpdatedAt = timeProvider.GetUtcNow();
+                failed.ErrorCode = errorCode;
+                failed.UpdatedAt = failedAt;
+                if (exhausted)
+                {
+                    failed.CompletedAt = failedAt;
+                }
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
+            logger.LogWarning(
+                exception,
+                "Publication operation {OperationId} for restaurant {RestaurantId} failed on attempt {AttemptCount} after {ElapsedMilliseconds} ms with safe code {ErrorCode}.",
+                operationId, claimedState.RestaurantId, failed?.AttemptCount ?? claimedState.AttemptCount,
+                elapsed.Elapsed.TotalMilliseconds, errorCode);
         }
     }
 }
@@ -887,10 +984,24 @@ public sealed class PublicationOutboxWorker(
             return;
         }
         migrationWaitLogged = false;
-        var cutoff = timeProvider.GetUtcNow() - options.Value.ClaimLease;
+        var now = timeProvider.GetUtcNow();
+        var leaseCutoff = now - options.Value.ClaimLease;
+        var releaseCutoff = now - options.Value.PublicationDelay;
+        var retryCutoff = now - options.Value.RetryBackoff;
+        var maxAttempts = options.Value.MaxAttempts;
+
+        // Three recoverable shapes: a pending row whose configured publication delay has elapsed, a
+        // processing row whose claim lease expired, and a failed row that is still inside its attempt
+        // budget and has rested for the backoff. Superseded and exhausted rows are deliberately terminal.
         var operationIds = await db.PublicationOutbox.AsNoTracking()
-            .Where(item => item.Status == PublicationStatuses.Pending ||
-                item.Status == PublicationStatuses.Processing && item.UpdatedAt <= cutoff)
+            .Where(item =>
+                item.Status == PublicationStatuses.Pending && item.CreatedAt <= releaseCutoff ||
+                item.Status == PublicationStatuses.Processing && item.UpdatedAt <= leaseCutoff ||
+                item.Status == PublicationStatuses.Failed &&
+                    item.ErrorCode != PublicationOrdering.SupersededErrorCode &&
+                    item.ErrorCode != PublicationOrdering.RetryExhaustedErrorCode &&
+                    item.AttemptCount < maxAttempts &&
+                    item.UpdatedAt <= retryCutoff)
             .OrderBy(item => item.CreatedAt).ThenBy(item => item.OperationId)
             .Select(item => item.OperationId)
             .Take(options.Value.BatchSize)

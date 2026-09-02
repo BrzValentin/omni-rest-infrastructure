@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { WebVitalsReporter } from "@/components/vitals/WebVitalsReporter";
 import { message } from "@/lib/menu-messages";
 import { readTenantDocument } from "@/lib/tenant-document";
 
@@ -27,7 +28,11 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   const { lang } = await readTenantDocument();
   return (
     <html lang={lang}>
-      <body>{children}</body>
+      {/*
+        The reporter renders nothing and registers its observers after hydration, so it is a client
+        island inside a server layout rather than a reason to make the layout a client component.
+      */}
+      <body>{children}<WebVitalsReporter /></body>
     </html>
   );
 }

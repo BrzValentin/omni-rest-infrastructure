@@ -18,7 +18,59 @@ public sealed class MigrationTests(PostgresFixture postgres)
 
         var pending = await context.Database.GetPendingMigrationsAsync();
         Assert.Empty(pending);
-        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(11, (await context.Database.GetAppliedMigrationsAsync()).Count());
+    }
+
+    [Fact]
+    public async Task PhaseEightUpgradeAddsNullableRestaurantWebsiteUrlWithoutDisturbingExistingRows()
+    {
+        await using var context = CreateContext();
+        await context.Database.EnsureDeletedAsync();
+        var migrator = context.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260910120000_Phase7RestaurantSlug");
+
+        await using (var connection = new NpgsqlConnection(postgres.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var seed = new NpgsqlCommand(
+                """
+                INSERT INTO public.restaurants (id, name, created_at, updated_at)
+                VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Pre-Website Tenant', now(), now());
+                """, connection);
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        await migrator.MigrateAsync();
+
+        await using var verify = new NpgsqlConnection(postgres.ConnectionString);
+        await verify.OpenAsync();
+        await using var shape = new NpgsqlCommand(
+            """
+            SELECT data_type, character_maximum_length, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'restaurants' AND column_name = 'website_url';
+            """, verify);
+        await using (var reader = await shape.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync(), "The Phase 8 migration must add restaurants.website_url.");
+            Assert.Equal("character varying", reader.GetString(0));
+            Assert.Equal(2048, reader.GetInt32(1));
+            Assert.Equal("YES", reader.GetString(2));
+        }
+
+        // The pre-existing row survives the upgrade with a null link rather than a placeholder.
+        await using var preserved = new NpgsqlCommand(
+            "SELECT count(*) FROM public.restaurants WHERE name = 'Pre-Website Tenant' AND website_url IS NULL;",
+            verify);
+        Assert.Equal(1L, await preserved.ExecuteScalarAsync());
+
+        await using var stored = new NpgsqlCommand(
+            """
+            UPDATE public.restaurants SET website_url = 'https://prairie-table.example'
+             WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+            SELECT website_url FROM public.restaurants WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+            """, verify);
+        Assert.Equal("https://prairie-table.example", await stored.ExecuteScalarAsync());
     }
 
     [Fact]

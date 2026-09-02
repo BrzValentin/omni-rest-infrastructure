@@ -69,6 +69,7 @@ public sealed partial class MenuDbContext(
         entity.Property(x => x.PhoneE164).HasColumnName("phone_e164").HasMaxLength(16);
         entity.Property(x => x.PhoneDisplay).HasColumnName("phone_display").HasMaxLength(40);
         entity.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
+        entity.Property(x => x.WebsiteUrl).HasColumnName("website_url").HasMaxLength(2048);
         entity.Property(x => x.MainMediaAssetId).HasColumnName("main_media_asset_id");
         entity.Property(x => x.DraftVersion).HasColumnName("draft_version").HasDefaultValue(1L).IsConcurrencyToken();
         entity.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -285,6 +286,12 @@ public sealed class RestaurantEntity
     public string? PhoneE164 { get; set; }
     public string? PhoneDisplay { get; set; }
     public string? Email { get; set; }
+
+    /// <summary>
+    /// The restaurant's own site, shown on the published page and used as the JSON-LD <c>url</c>. Null
+    /// when the tenant has none. Always an absolute https URL; see <see cref="Restaurants.RestaurantValidation"/>.
+    /// </summary>
+    public string? WebsiteUrl { get; set; }
     public Guid? MainMediaAssetId { get; set; }
 
     /// <summary>Schema.org FoodEstablishment subtype; see <see cref="RestaurantTypes"/>.</summary>

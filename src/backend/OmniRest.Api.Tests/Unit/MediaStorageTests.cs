@@ -6,6 +6,9 @@ using Microsoft.Extensions.Options;
 using OmniRest.Api.Data;
 using OmniRest.Api.Restaurants;
 using OmniRest.Api.Security;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace OmniRest.Api.Tests.Unit;
 
@@ -194,6 +197,209 @@ public sealed class MediaStorageTests
         sandbox.AssertOutsideSentinelUntouched();
     }
 
+    /// <summary>
+    /// PR-23: an upload now yields the whole responsive ladder rather than a single full-size blob. These
+    /// widths are the contract the public projection orders by and the frontend's srcset picks from, so
+    /// they are asserted exactly rather than by count.
+    /// </summary>
+    [Fact]
+    public async Task ALargeUploadPersistsTheWholeResponsiveLadderAsMediaVariantRows()
+    {
+        var storage = new LadderRecordingStorage();
+
+        var (response, variants) = await UploadWithSuppressedPersistenceAsync(storage, CreateImage(2000, 1200));
+
+        var ordered = variants.OrderBy(item => item.Width).ToArray();
+        Assert.Equal([480, 960, 1600, 2000], ordered.Select(item => item.Width).ToArray());
+        Assert.Equal([288, 576, 960, 1200], ordered.Select(item => item.Height).ToArray());
+        Assert.Equal([480, 960, 1600, 2000], response.Variants.Select(item => item.Width).ToArray());
+
+        // Every rung is a separate blob under its own storage key: a ladder that collided on one name
+        // would silently publish four variant rows pointing at a single file.
+        Assert.Equal(4, storage.Written.Count);
+        Assert.Equal(4, variants.Select(item => item.StorageKey).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(4, variants.Select(item => item.Url).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(variants, item => Assert.Equal(response.Id, item.MediaAssetId.ToString()));
+
+        // Each row records the bytes written for its own rung, not the original's, which is what makes the
+        // ladder worth storing at all.
+        var sizes = ordered.Select(item => item.FileSizeBytes).ToArray();
+        Assert.All(sizes, size => Assert.True(size > 0));
+        Assert.True(
+            sizes[0] < sizes[^1],
+            $"Expected the smallest rung to be the smallest blob but sizes were [{string.Join(", ", sizes)}].");
+    }
+
+    /// <summary>
+    /// The no-upscale rule already proven for <see cref="GalleryThumbnailFactory"/>, now on the responsive
+    /// ladder: a source below the smallest rung is stored once, byte-for-byte, under the media asset's own
+    /// name rather than re-encoded into a larger label.
+    /// </summary>
+    [Fact]
+    public async Task AnImageSmallerThanTheSmallestRungIsStoredOnceAndReusesTheSourceBytes()
+    {
+        var storage = new LadderRecordingStorage();
+        var source = CreateImage(320, 200);
+
+        var (response, variants) = await UploadWithSuppressedPersistenceAsync(storage, source);
+
+        var variant = Assert.Single(variants);
+        Assert.Equal((320, 200), (variant.Width, variant.Height));
+        Assert.Equal(source.LongLength, variant.FileSizeBytes);
+        var written = Assert.Single(storage.Written);
+        Assert.Equal(source, written.Bytes);
+        Assert.Equal(Guid.Parse(response.Id), written.Seed);
+        Assert.Equal((320, 200), (response.Variants.Single().Width, response.Variants.Single().Height));
+    }
+
+    /// <summary>
+    /// The ladder itself, on in-memory images: only rungs strictly below the source are produced, they are
+    /// ordered ascending and never duplicated, and the source is always the widest rung so an asset stored
+    /// before the ladder existed and one stored after it project identically.
+    /// </summary>
+    [Theory]
+    [InlineData(2000, 1200, 4)]
+    [InlineData(1000, 1000, 3)]
+    [InlineData(700, 400, 2)]
+    [InlineData(480, 480, 1)]
+    [InlineData(300, 200, 1)]
+    [InlineData(1, 1, 1)]
+    public async Task TheResponsiveLadderOnlyAddsRungsBelowTheSourceAndAlwaysEndsWithTheOriginal(
+        int width, int height, int expectedRungs)
+    {
+        var bytes = CreateImage(width, height);
+        var source = new ValidatedImage(bytes, ".png", "image/png", width, height);
+
+        var ladder = await new ResponsiveImageVariantFactory().CreateAsync(source, CancellationToken.None);
+
+        Assert.Equal(expectedRungs, ladder.Count);
+        var edges = ladder.Select(item => Math.Max(item.Width, item.Height)).ToArray();
+        Assert.Equal(edges.OrderBy(edge => edge).ToArray(), edges);
+        Assert.Equal(edges.Length, edges.Distinct().Count());
+        Assert.All(edges, edge => Assert.True(edge <= Math.Max(width, height), $"Rung {edge} upscaled past the source."));
+
+        var widest = ladder[^1];
+        Assert.True(widest.ReusedSource);
+        Assert.Same(source.Bytes, widest.Bytes);
+        Assert.Equal((width, height), (widest.Width, widest.Height));
+        Assert.Single(ladder, item => item.ReusedSource);
+
+        foreach (var derived in ladder.Take(ladder.Count - 1))
+        {
+            using var decoded = Image.Load(derived.Bytes);
+            Assert.Equal((derived.Width, derived.Height), (decoded.Width, decoded.Height));
+            Assert.Equal("image/png", decoded.Metadata.DecodedImageFormat?.DefaultMimeType);
+            Assert.True(
+                Math.Abs((double)derived.Width / derived.Height - (double)width / height) < 0.01,
+                $"Rung {derived.Width}x{derived.Height} did not preserve the {width}x{height} aspect ratio.");
+        }
+    }
+
+    /// <summary>
+    /// Runs a real upload through <see cref="MediaAssetService"/> with the database write suppressed, so the
+    /// <see cref="MediaVariantEntity"/> rows the service builds can be inspected without a live PostgreSQL.
+    /// </summary>
+    private static async Task<(AdminMediaAssetResponse Response, IReadOnlyList<MediaVariantEntity> Variants)>
+        UploadWithSuppressedPersistenceAsync(LadderRecordingStorage storage, byte[] png)
+    {
+        var capture = new SuppressingSaveChangesInterceptor();
+        var options = new DbContextOptionsBuilder<MenuDbContext>()
+            .UseNpgsql("Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused")
+            .AddInterceptors(capture)
+            .Options;
+        await using var dbContext = new MenuDbContext(options);
+        var service = new MediaAssetService(
+            dbContext,
+            storage,
+            new ResponsiveImageVariantFactory(),
+            TimeProvider.System,
+            NullLogger<MediaAssetService>.Instance);
+        await using var stream = new MemoryStream(png);
+        var file = new FormFile(stream, 0, png.Length, "file", "image.png")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/png"
+        };
+        var access = new OwnerRestaurantAccess(Guid.NewGuid(), Guid.NewGuid(), MembershipRoles.Owner);
+
+        var result = await service.UploadAsync(access, "Responsive dining room", file, CancellationToken.None);
+
+        Assert.Null(result.Failure);
+        Assert.NotNull(result.Value);
+        return (result.Value, capture.Variants);
+    }
+
+    private static byte[] CreateImage(int width, int height)
+    {
+        using var image = new Image<Rgba32>(width, height);
+        image.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                for (var x = 0; x < row.Length; x++)
+                {
+                    row[x] = new Rgba32((byte)(x * 7 % 256), (byte)(y * 13 % 256), 128, 255);
+                }
+            }
+        });
+
+        using var buffer = new MemoryStream();
+        image.Save(buffer, new PngEncoder());
+        return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// Validates with the shipped ImageSharp rules but records stores in memory, because the real storage
+    /// writes through Unix libc P/Invoke and this test is only about which rungs are produced.
+    /// </summary>
+    private sealed class LadderRecordingStorage : ILocalMediaStorage
+    {
+        private readonly LocalMediaStorage validator = new(Options.Create(new LocalMediaStorageOptions
+        {
+            LocalRoot = Path.Combine(Path.GetTempPath(), "omni-rest-unused-media-root"),
+            MaximumBytes = 32L * 1024 * 1024
+        }));
+
+        public List<(Guid Seed, byte[] Bytes, int Width, int Height)> Written { get; } = [];
+
+        public Task<ValidatedImage> ValidateAsync(IFormFile file, CancellationToken cancellationToken) =>
+            validator.ValidateAsync(file, cancellationToken);
+
+        public Task<StoredMedia> StoreAsync(
+            Guid restaurantId,
+            Guid mediaAssetId,
+            ValidatedImage image,
+            CancellationToken cancellationToken)
+        {
+            Written.Add((mediaAssetId, image.Bytes, image.Width, image.Height));
+            return Task.FromResult(new StoredMedia(
+                $"/media/uploads/{restaurantId:N}/{mediaAssetId:N}{image.Extension}", image.Width, image.Height));
+        }
+
+        public Task DeleteAsync(
+            Guid restaurantId,
+            Guid mediaAssetId,
+            string extension,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class SuppressingSaveChangesInterceptor : SaveChangesInterceptor
+    {
+        public List<MediaVariantEntity> Variants { get; } = [];
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Variants.AddRange(eventData.Context!.ChangeTracker
+                .Entries<MediaVariantEntity>()
+                .Select(entry => entry.Entity));
+            return ValueTask.FromResult(InterceptionResult<int>.SuppressWithResult(0));
+        }
+    }
+
     private static async Task<Exception> AssertCompensatesAsync(
         Exception failure,
         CancellationToken cancellationToken,
@@ -234,6 +440,7 @@ public sealed class MediaStorageTests
         var service = new MediaAssetService(
             dbContext,
             CreateStorage(root),
+            new ResponsiveImageVariantFactory(),
             TimeProvider.System,
             NullLogger<MediaAssetService>.Instance);
         await using var stream = new MemoryStream(Png);

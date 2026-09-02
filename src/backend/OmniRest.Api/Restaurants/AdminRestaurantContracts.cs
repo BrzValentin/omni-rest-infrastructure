@@ -25,7 +25,13 @@ public sealed record UpdateRestaurantProfileRequest(
     string? RestaurantType = null,
 
     /// <summary>Schema.org price band; see <see cref="Data.PriceRanges"/>.</summary>
-    string? PriceRange = null);
+    string? PriceRange = null,
+
+    /// <summary>
+    /// The restaurant's own site. Null or empty clears it; otherwise an absolute https URL of at most
+    /// 2048 characters (PR-24). Trailing position keeps every existing positional construction valid.
+    /// </summary>
+    string? WebsiteUrl = null);
 
 public sealed record AdminHourIntervalRequest(string OpensAt, string ClosesAt);
 public sealed record AdminRegularHoursDayRequest(int DayOfWeek, IReadOnlyList<AdminHourIntervalRequest> Intervals);
@@ -98,7 +104,10 @@ public sealed record AdminRestaurantResponse(
     string? RestaurantType = null,
     string? PriceRange = null,
     AdminMainImageResponse? Logo = null,
-    AdminMainImageResponse? CoverImage = null);
+    AdminMainImageResponse? CoverImage = null,
+
+    /// <summary>The saved website link, so the owner form round-trips what it stored (PR-24).</summary>
+    string? WebsiteUrl = null);
 
 public sealed record AdminMutationResponse(AdminRestaurantResponse Restaurant, PublicationStatusResponse Publication);
 

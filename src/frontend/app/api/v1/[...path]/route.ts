@@ -3,6 +3,7 @@ import { request as httpsRequest } from "node:https";
 import type { IncomingHttpHeaders } from "node:http";
 import type { NextRequest } from "next/server";
 
+import { upstreamProblemResponse } from "@/lib/api-error";
 import { tenantHostOrNull } from "@/lib/tenant-host";
 
 export const dynamic = "force-dynamic";
@@ -51,21 +52,32 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     if (value) outgoing[name] = value;
   }
 
-  return new Promise<Response>((resolve, reject) => {
+  return new Promise<Response>((resolve) => {
+    let timedOut = false;
+    // An upstream fault is answered with a problem document rather than by rejecting the handler.
+    // A rejection reached the caller as an opaque framework `500` carrying an HTML body, which a
+    // client expecting `application/problem+json` cannot read and cannot tell apart from a fault in
+    // the proxy itself.
+    const fail = () => resolve(upstreamProblemResponse(timedOut ? "timeout" : "unavailable"));
     const upstream = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
       method: request.method,
       headers: outgoing,
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      // Without this a fault that arrives after the headers did left the promise unsettled.
+      response.on("error", fail);
       response.on("end", () => {
         const status = response.statusCode ?? 502;
         const body = status === 204 || status === 205 || status === 304 ? null : Buffer.concat(chunks);
         resolve(new Response(body, { status, headers: responseHeaders(response.headers) }));
       });
     });
-    upstream.setTimeout(15_000, () => upstream.destroy(new Error("API proxy timed out.")));
-    upstream.on("error", reject);
+    upstream.setTimeout(15_000, () => {
+      timedOut = true;
+      upstream.destroy(new Error("API proxy timed out."));
+    });
+    upstream.on("error", fail);
     if (body) upstream.write(body);
     upstream.end();
   });

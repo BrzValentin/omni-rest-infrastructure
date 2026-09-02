@@ -36,10 +36,14 @@ function swipe(dialog: HTMLElement, from: readonly [number, number], to: readonl
   fireEvent.touchEnd(dialog, { changedTouches: [{ clientX: to[0], clientY: to[1] }] });
 }
 
+// The viewer is a `next/dynamic` chunk (PR-21 Task 3), so it arrives a microtask after the click
+// rather than in the same commit. Every assertion below still reads the dialog synchronously; this
+// is the one place that has to wait for the module.
 async function openFirstPhoto() {
   const user = userEvent.setup();
   const trigger = screen.getByRole("button", { name: galleryPhotos[0].altText });
   await user.click(trigger);
+  await screen.findByRole("dialog");
   return { user, trigger };
 }
 
@@ -282,7 +286,18 @@ describe("DesignGallery", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: galleryPhotos[1].altText }));
-    expect(screen.getByRole("dialog", { name: "Photo 2 of 3" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Photo 2 of 3" })).toBeInTheDocument();
+  });
+
+  it("keeps the viewer out of the initial render until a thumbnail is opened", async () => {
+    const { container } = renderGallery();
+
+    // The lazily loaded chunk must not be pulled in just because the gallery rendered.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(container.querySelector(`.${classes.lightboxBackdrop}`)).toBeNull();
+
+    await openFirstPhoto();
+    expect(screen.getByRole("dialog", { name: "Photo 1 of 3" })).toBeInTheDocument();
   });
 
   it("has no accessibility violations with the viewer closed or open", async () => {

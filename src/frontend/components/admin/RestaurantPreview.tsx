@@ -24,6 +24,8 @@ export function RestaurantPreview({ restaurant }: { restaurant: PublicRestaurant
         {restaurant.shortDescription && <p>{restaurant.shortDescription}</p>}
         {restaurant.phone && <div className={styles.buttonRow}><CallButton e164={restaurant.phone.e164} display={restaurant.phone.display} /><PhoneLink e164={restaurant.phone.e164}>{restaurant.phone.display}</PhoneLink></div>}
         {restaurant.email && <p><a href={`mailto:${restaurant.email}`}>{restaurant.email}</a></p>}
+        {/* Already validated server-side as an absolute https URL, so it can be rendered as a link. */}
+        {restaurant.websiteUrl && <p><a href={restaurant.websiteUrl} rel="noreferrer">{restaurant.websiteUrl}</a></p>}
         {restaurant.address && <address className={styles.previewAddress}>{restaurant.address.formatted}<a href={restaurant.address.directionsUrl} rel="noreferrer">Get directions</a></address>}
         <section aria-labelledby="preview-hours"><h2 id="preview-hours">Hours</h2><dl className={styles.hoursList}>{restaurant.regularHours.map((day) => <div key={day.dayOfWeek}><dt>{DAYS[day.dayOfWeek]}</dt><dd>{day.intervals.length === 0 ? "Closed" : day.intervals.map((item) => `${item.opensAt.slice(0, 5)}–${item.closesAt.slice(0, 5)}${item.closesNextDay ? " next day" : ""}`).join(", ")}</dd></div>)}</dl></section>
         {restaurant.specialHours.length > 0 && <section aria-labelledby="preview-special"><h2 id="preview-special">Special hours</h2><ul>{restaurant.specialHours.map((item) => <li key={item.date}><strong>{item.date}</strong>: {item.isClosed ? "Closed" : item.intervals.map((period) => `${period.opensAt.slice(0, 5)}–${period.closesAt.slice(0, 5)}`).join(", ")} {item.note}</li>)}</ul></section>}

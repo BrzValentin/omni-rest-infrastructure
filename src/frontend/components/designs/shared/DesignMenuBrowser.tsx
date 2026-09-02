@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { MouseEvent } from "react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { formatPrice } from "@/lib/format-price";
 import type { PublicBadge, PublicCategory, PublicDish, PublicMedia } from "@/lib/menu-contract";
@@ -72,10 +72,18 @@ function subscribeToLocation(callback: () => void) {
 export function DesignMenuBrowser({ categories, locale, currency, classes }: DesignMenuBrowserProps) {
   const enhanced = useSyncExternalStore(subscribeToHydration, hydratedSnapshot, serverHydratedSnapshot);
   const hash = useSyncExternalStore(subscribeToLocation, locationSnapshot, serverLocationSnapshot);
-  const firstSlug = categories[0]?.slug ?? null;
-  const requestedSlug = hash.startsWith("#") ? hash.slice(1) : "";
-  const selectedSlug = categories.some((category) => category.slug === requestedSlug) ? requestedSlug : firstSlug;
-  const invalidHash = requestedSlug.length > 0 && requestedSlug !== selectedSlug;
+  // `useSyncExternalStore` fires on every hashchange, popstate, and in-page selection, and the large
+  // fixture puts 30 categories behind this. Resolving the slug in a memo keeps the scan off the path
+  // that the category-switch budget measures; the render below then only has to compare strings.
+  const { selectedSlug, invalidHash } = useMemo(() => {
+    const firstSlug = categories[0]?.slug ?? null;
+    const requestedSlug = hash.startsWith("#") ? hash.slice(1) : "";
+    const resolved = categories.some((category) => category.slug === requestedSlug) ? requestedSlug : firstSlug;
+    return {
+      selectedSlug: resolved,
+      invalidHash: requestedSlug.length > 0 && requestedSlug !== resolved,
+    };
+  }, [categories, hash]);
 
   useEffect(() => {
     if (!invalidHash) return;
@@ -157,19 +165,28 @@ export function DesignMenuBrowser({ categories, locale, currency, classes }: Des
   );
 }
 
-function DesignDish({
-  dish,
-  locale,
-  currency,
-  classes,
-  eager,
-}: Readonly<{
+type DesignDishProps = Readonly<{
   dish: PublicDish;
   locale: string;
   currency: string;
   classes: DesignMenuClasses;
   eager: boolean;
-}>) {
+}>;
+
+/**
+ * Every dish stays mounted — non-selected panels are hidden, never unmounted, because a crawler has
+ * to find all of them in the markup (README ruling 6). That makes a category switch a re-render of
+ * 1,000 cards, none of which can have changed: their props come from the published snapshot and from
+ * a module-level class map. Memoizing turns that re-render into 1,000 prop comparisons and stops the
+ * price formatting, the badge mapping, and the media lookup from running again.
+ */
+function DesignDishCard({
+  dish,
+  locale,
+  currency,
+  classes,
+  eager,
+}: DesignDishProps) {
   const unavailable = dish.availability === "unavailable";
   const headingId = `dish-${dish.id}`;
   const unavailableId = `dish-status-${dish.id}`;
@@ -192,6 +209,9 @@ function DesignDish({
     </article>
   );
 }
+
+const DesignDish = memo(DesignDishCard);
+DesignDish.displayName = "DesignDish";
 
 function DesignDishMedia({
   media,
@@ -229,10 +249,16 @@ function DesignDishMedia({
 }
 
 function DesignBadges({ badges, classes }: Readonly<{ badges: readonly PublicBadge[]; classes: DesignMenuClasses }>) {
-  const known = badges.flatMap((badge) => {
-    const expectedKey = badgeRegistry[badge.code];
-    return expectedKey && badge.labelKey === expectedKey ? [{ ...badge, label: message(expectedKey) }] : [];
-  });
+  // The registry lookup and the label resolution depend only on the published badge list, which never
+  // changes for the life of the page. Without this, switching category re-derived the labels for every
+  // badge on every one of the 1,000 dishes.
+  const known = useMemo(
+    () => badges.flatMap((badge) => {
+      const expectedKey = badgeRegistry[badge.code];
+      return expectedKey && badge.labelKey === expectedKey ? [{ ...badge, label: message(expectedKey) }] : [];
+    }),
+    [badges],
+  );
   if (known.length === 0) return null;
   return (
     <ul className={classes.badges} aria-label="Dish information">

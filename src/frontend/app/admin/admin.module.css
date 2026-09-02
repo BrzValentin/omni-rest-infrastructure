@@ -119,3 +119,18 @@
 .dishThumbnail { width: 4rem; height: 4rem; border-radius: .35rem; object-fit: cover; }
 .availableBadge { padding: .1rem .5rem; border-radius: 1rem; background: #dff0e4; color: #17512f; font-weight: 700; }
 .unavailableBadge { padding: .1rem .5rem; border-radius: 1rem; background: #f7e0d8; color: #7a2c12; font-weight: 700; }
+
+/* Inline price editing: a compact "type, save" pair that lives in the dish row itself, so a price
+   change never has to go through the full dish form. */
+.inlinePrice { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.inlinePrice input { width: 6.5rem; min-height: 2.75rem; border: 1px solid #777268; border-radius: .4rem; padding: .5rem .55rem; background: #fff; color: #111; font: inherit; }
+.inlinePrice button { min-height: 2.75rem; border: 1px solid #56665e; border-radius: .45rem; padding: .5rem .7rem; background: #fff; color: #213b32; font: inherit; font-weight: 700; cursor: pointer; }
+.inlinePrice button:disabled { cursor: not-allowed; opacity: .55; }
+
+/* The gallery drop zone wraps the file picker rather than replacing it, so the dashed frame reads
+   as "you may drag here too" instead of as the only way in. */
+.dropZone { display: grid; align-content: start; gap: .5rem; padding: 1rem; border: 2px dashed #777268; border-radius: .6rem; background: #faf8f2; }
+.dropZone p { margin: 0; color: #4c4a43; }
+.dropZoneActive { border-color: #244f40; border-style: solid; background: #edf4ef; }
+.replaceControl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-size: .9rem; font-weight: 700; }
+.replaceControl input { max-width: 12rem; }

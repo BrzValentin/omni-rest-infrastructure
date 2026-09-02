@@ -2,6 +2,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { NextRequest } from "next/server";
 
+import { upstreamProblemResponse } from "@/lib/api-error";
 import { tenantHostOrNull } from "@/lib/tenant-host";
 
 export const dynamic = "force-dynamic";
@@ -20,13 +21,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
   const safePath = path.every(safeSegment) ? path.join("/") : null;
   if (!safePath) return new Response(null, { status: 404 });
   const url = new URL(`/media/${safePath}`, process.env.OMNI_REST_API_BASE_URL ?? "http://127.0.0.1:5279");
-  return new Promise<Response>((resolve, reject) => {
+  return new Promise<Response>((resolve) => {
+    let timedOut = false;
+    // The upstream failing is answered with a problem document rather than a rejected handler, which
+    // reached the browser as an opaque framework `500` with an HTML body in place of an image.
+    const fail = () => resolve(upstreamProblemResponse(timedOut ? "timeout" : "unavailable"));
     const upstream = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
       method: "GET",
       headers: { accept: request.headers.get("accept") ?? "image/*", host },
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      // A fault part-way through the image body used to leave this promise unsettled for good.
+      response.on("error", fail);
       response.on("end", () => {
         const status = response.statusCode ?? 502;
         resolve(new Response(Buffer.concat(chunks), {
@@ -41,8 +48,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
         }));
       });
     });
-    upstream.setTimeout(15_000, () => upstream.destroy(new Error("Media proxy timed out.")));
-    upstream.on("error", reject);
+    upstream.setTimeout(15_000, () => {
+      timedOut = true;
+      upstream.destroy(new Error("Media proxy timed out."));
+    });
+    upstream.on("error", fail);
     upstream.end();
   });
 }

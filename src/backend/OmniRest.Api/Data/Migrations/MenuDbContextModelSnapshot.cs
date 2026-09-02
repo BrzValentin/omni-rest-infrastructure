@@ -1108,6 +1108,11 @@ namespace OmniRest.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<string>("WebsiteUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("website_url");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Slug")
