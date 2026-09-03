@@ -73,6 +73,7 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
           <AdminNavLink href="/admin/restaurant#hours-title">My Hours</AdminNavLink>
           <AdminNavLink href="/admin/restaurant/preview">Preview</AdminNavLink>
           <AdminNavLink href="/admin/design">Design</AdminNavLink>
+          <AdminNavLink href="/admin/qr-code">My QR Code</AdminNavLink>
           <LogoutButton />
         </nav>
       </header>

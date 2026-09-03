@@ -134,3 +134,18 @@
 .dropZoneActive { border-color: #244f40; border-style: solid; background: #edf4ef; }
 .replaceControl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-size: .9rem; font-weight: 700; }
 .replaceControl input { max-width: 12rem; }
+
+/* The QR page: the code beside its address, so an owner reads what they are about to print rather
+   than trusting a picture they cannot check. Collapses to one column on a phone like every other
+   admin surface. */
+.qrPanel { display: grid; grid-template-columns: minmax(12rem, 18rem) 1fr; gap: clamp(1rem, 3vw, 2rem); align-items: start; }
+.qrFrame { padding: 1rem; border: 1px solid #d7d0c1; border-radius: .6rem; background: #fff; }
+/* Width in `rem` with a square aspect ratio, never a pixel size: the SVG carries module units only,
+   and reserving the square up front keeps the code from shifting the page as it paints. */
+.qrImage { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.qrDetail { display: grid; gap: .75rem; }
+.qrDetail h3 { margin: 0; }
+/* The address must be inspectable character by character, and a long domain must not push the panel
+   sideways — this is the one place in the portal where a monospace face earns itself. */
+.qrUrl { margin: 0; padding: .6rem .7rem; border: 1px solid #d7d0c1; border-radius: .45rem; background: #f7f4ed; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95rem; overflow-wrap: anywhere; }
+@media (max-width: 48rem) { .qrPanel { grid-template-columns: 1fr; } }

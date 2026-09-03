@@ -82,6 +82,16 @@ public sealed record PublicationStatusResponse(
     string? ErrorCode,
     DateTimeOffset UpdatedAt);
 
+/// <summary>
+/// The host the tenant's public menu is served on, so the dashboard can build a QR target it cannot
+/// derive from its own request host — the owner portal may be served on a different host entirely
+/// (PR-26). <c>Host</c> is null exactly when <c>Source</c> is <c>"none"</c>, meaning the tenant has no
+/// custom domain and the deployment configures no platform base domain to place its slug beneath.
+/// </summary>
+/// <param name="Host">The public host, lowercase and without a scheme, or null when there is none.</param>
+/// <param name="Source">How the host was arrived at: <c>"domain"</c>, <c>"slug"</c> or <c>"none"</c>.</param>
+public sealed record AdminPublicAddressResponse(string? Host, string Source);
+
 public sealed record AdminRestaurantResponse(
     string Id,
     string Name,

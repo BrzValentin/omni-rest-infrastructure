@@ -81,6 +81,7 @@ builder.Services.AddScoped<IMenuManagementService>(provider => provider.GetRequi
 builder.Services.AddScoped<IGalleryManagementService>(provider => provider.GetRequiredService<RestaurantManagementService>());
 builder.Services.AddScoped<IMediaAssetService, MediaAssetService>();
 builder.Services.AddScoped<IRestaurantConfigurationService, RestaurantConfigurationService>();
+builder.Services.AddScoped<IRestaurantPublicAddressService, RestaurantPublicAddressService>();
 builder.Services.AddSingleton<IGalleryThumbnailFactory, GalleryThumbnailFactory>();
 builder.Services.AddSingleton<IResponsiveImageVariantFactory, ResponsiveImageVariantFactory>();
 builder.Services.AddScoped<IInProcessPublicationDispatcher, InProcessPublicationDispatcher>();

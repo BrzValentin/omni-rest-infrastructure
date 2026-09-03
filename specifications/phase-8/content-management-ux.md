@@ -20,6 +20,7 @@ administration — Phase 7 Ruling 3.
 | My Hours | `/admin/restaurant#hours-title` | Anchor into the restaurant page — see §2 |
 | Preview | `/admin/restaurant/preview` | Draft preview before publication |
 | Design | `/admin/design` | Website design selection |
+| My QR Code | `/admin/qr-code` | Added in Phase 9 (PR-26). Read-only: the menu QR code, its address, and the SVG/PNG downloads — see `specifications/phase-9/` |
 
 ### Ruling — hours are an anchor, not a separate page
 

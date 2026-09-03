@@ -10,6 +10,7 @@ import type { AdminMenu } from "./menu-admin-contract";
 import type { AdminGallery } from "./gallery-admin-contract";
 import type {
   AdminMediaAsset,
+  AdminPublicAddress,
   AdminRestaurant,
   PublicGalleryResponse,
   PublicRestaurant,
@@ -95,5 +96,6 @@ export const getAdminWebsiteDesignPreview = (designId: string) =>
 export const getAdminMediaAssets = () => serverGet<AdminMediaAsset[]>("/api/v1/admin/media-assets");
 export const getAdminMenu = () => serverGet<AdminMenu>("/api/v1/admin/menu");
 export const getAdminGallery = () => serverGet<AdminGallery>("/api/v1/admin/gallery");
+export const getAdminPublicAddress = () => serverGet<AdminPublicAddress>("/api/v1/admin/restaurant/public-address");
 export const getPublicRestaurant = () => serverGet<PublicRestaurant>("/api/v1/public/restaurant");
 export const getPublicGallery = () => serverGet<PublicGalleryResponse>("/api/v1/public/restaurant/gallery");

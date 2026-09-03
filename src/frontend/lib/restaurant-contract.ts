@@ -68,6 +68,23 @@ export type AdminRestaurant = {
   websiteUrl?: string | null;
 };
 export type AdminMutation = { restaurant: AdminRestaurant; publication: PublicationStatus };
+/**
+ * Where this restaurant's public site actually lives, as the backend resolves it.
+ *
+ * The owner portal is not guaranteed to be served on the tenant's public host: owner endpoints bind
+ * the tenant from the signed-in membership rather than from `Host`, so the portal may legitimately
+ * run on a separate admin origin — the Playwright fixtures already do exactly that. This makes the
+ * request-derived origin in `lib/seo.ts` the wrong answer for anything naming the *visitor-facing*
+ * address, and most of all for a QR code, which is printed once and cannot be corrected afterwards.
+ * Only the backend knows this value.
+ *
+ * `host` carries no scheme and no port; `lib/public-menu-url.ts` turns it into a URL. `source`
+ * records which resolution strategy answered, and is `"none"` exactly when `host` is null.
+ */
+export type AdminPublicAddress = {
+  host: string | null;
+  source: "domain" | "slug" | "none";
+};
 /** A Schema.org `FoodEstablishment` subtype, used verbatim as the JSON-LD `@type`. */
 export const restaurantTypes = [
   "Restaurant", "CafeOrCoffeeShop", "Bakery", "BarOrPub", "Brewery",

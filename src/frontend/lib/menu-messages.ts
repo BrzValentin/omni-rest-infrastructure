@@ -50,6 +50,7 @@ const enCa = {
   "admin.section.preview": "Preview",
   "admin.section.designPreview": "Design preview",
   "admin.section.portal": "Owner portal",
+  "admin.section.qrCode": "QR code",
   badgesDisclaimer: "Dietary and allergen badges are informational and do not replace speaking with the restaurant about your needs.",
   exclusiveTaxNotice: "Prices exclude applicable taxes.",
   "menu.badge.vegetarian": "Vegetarian",

@@ -960,6 +960,123 @@ function createOwnerPortal(cookieName) {
 const ownerPortal = createOwnerPortal("omni-owner");
 const outagePortal = createOwnerPortal("omni-outage");
 
+/* ===========================================================================
+ * Phase 9 fixtures: a public address on a host the portal is not served on.
+ *
+ * `e2e/qr-code.spec.ts` exists to prove one thing — a printed QR code names the
+ * restaurant's *public* host, never the admin host the portal happens to answer on.
+ * That claim is only provable when the two differ, so every tenant below signs its
+ * owner in on a `qr…localhost` admin host while reporting a completely different
+ * public address from
+ *
+ *     GET /api/v1/admin/restaurant/public-address
+ *
+ * A frontend that derived the code from the request origin would encode
+ * `qr.localhost` here and fail loudly, instead of failing silently on three hundred
+ * table tents that open a login page.
+ *
+ * These are hosts of their own rather than a third consumer of `admin.localhost`,
+ * because `restaurant.spec` and `design.spec` already collide on that fixture under
+ * `fullyParallel` — `mode: "serial"` orders tests within a file, not across files
+ * (`specifications/phase-8/implementation-evidence.md`). A third file on it would
+ * deepen a known defect rather than avoid it.
+ * ========================================================================= */
+
+/**
+ * One QR tenant: exactly enough owner portal for `/admin/qr-code` and its two download
+ * routes, and nothing else.
+ *
+ * Only three surfaces render on these hosts — the portal chrome, the dashboard, and the
+ * QR page — and all three read nothing from the admin aggregate but the restaurant's
+ * name, so the rest of it is deliberately absent rather than invented. Everything here
+ * is read-only: no spec can change what a tenant reports, so unlike the owner portals
+ * above these need no reset endpoint and no serial ownership of shared state.
+ */
+function createQrTenant({ cookieName, restaurantId, restaurantName, publicAddress }) {
+  const restaurant = { id: restaurantId, name: restaurantName };
+  const session = {
+    userId: `owner-${cookieName}`,
+    displayName: "Owner",
+    memberships: [{ restaurantId, role: "owner" }],
+    idleExpiresAt: "2026-10-01T12:00:00Z",
+    absoluteExpiresAt: "2026-10-01T12:00:00Z",
+    // Fixed rather than echoed from the request: the spec always signs in from `/admin`,
+    // and a returnPath the fixture invents would send it somewhere it did not ask for.
+    returnPath: "/admin",
+  };
+
+  function handle(request, response) {
+    const requestUrl = new URL(request.url ?? "/", "http://qr.localhost");
+    const path = requestUrl.pathname;
+    const method = request.method ?? "GET";
+    const signedIn = request.headers.cookie?.includes(`${cookieName}=1`) ?? false;
+
+    if (path === "/api/v1/auth/antiforgery") {
+      return json(response, 200, { token: `${cookieName}-token`, headerName: "X-CSRF-TOKEN" });
+    }
+    if (path === "/api/v1/auth/login" && method === "POST") {
+      return json(response, 200, session, { "set-cookie": `${cookieName}=1; Path=/; HttpOnly; SameSite=Lax` });
+    }
+    if (path === "/api/v1/auth/logout" && method === "POST") {
+      return json(response, 204, null, { "set-cookie": `${cookieName}=; Path=/; Max-Age=0` });
+    }
+    if (path === "/api/v1/auth/session") {
+      return signedIn ? json(response, 200, session) : json(response, 401, { code: "unauthorized" });
+    }
+
+    // The address is owner-authenticated on the real backend, and the `401` is what both
+    // download routes map onto their own `401`. Answering it unauthenticated would make the
+    // unauthenticated-download test pass for the wrong reason.
+    if (!signedIn) return json(response, 401, { code: "unauthorized" });
+
+    if (path === "/api/v1/admin/restaurant" && method === "GET") {
+      return json(response, 200, restaurant, { etag: `"${cookieName}-1"` });
+    }
+    if (path === "/api/v1/admin/restaurant/public-address" && method === "GET") {
+      return json(response, 200, publicAddress);
+    }
+    return json(response, 404, { code: "not_found" });
+  }
+
+  return { handle };
+}
+
+/**
+ * The QR tenants. The key is the admin host the owner signs in on; `publicAddress.host` is
+ * what the code must encode. None of the five hostnames involved is a substring of any other,
+ * which is what lets the spec assert absence with `not.toContain` and mean it.
+ *
+ * The primary tenant points at `menu.localhost` on purpose: that is the real published menu
+ * this suite already serves, so scanning its code lands on an actual menu rather than on a
+ * host invented for the assertion. `host` carries no port, exactly as `restaurant_domains.host`
+ * is constrained to — reattaching one is the frontend's job, and `playwright.config.ts` says
+ * which port to reattach.
+ */
+const qrTenants = new Map([
+  ["qr.localhost", createQrTenant({
+    cookieName: "omni-qr",
+    restaurantId: "c1111111-1111-4111-8111-111111111111",
+    restaurantName: "Corner Cafe",
+    publicAddress: { host: "menu.localhost", source: "domain" },
+  })],
+  // A second *configured* restaurant, so cross-restaurant leakage is checked between two tenants
+  // that both have an address rather than between one that has one and one that does not.
+  ["qr-second.localhost", createQrTenant({
+    cookieName: "omni-qr-second",
+    restaurantId: "c2222222-2222-4222-8222-222222222222",
+    restaurantName: "Bistro Bijou",
+    publicAddress: { host: "bistro.localhost", source: "slug" },
+  })],
+  // No custom domain and no platform base domain to fall back on: the one state that has no code
+  // to show, and must say so instead of printing a broken one.
+  ["qr-unaddressed.localhost", createQrTenant({
+    cookieName: "omni-qr-unaddressed",
+    restaurantId: "c3333333-3333-4333-8333-333333333333",
+    restaurantName: "Unlisted Kitchen",
+    publicAddress: { host: null, source: "none" },
+  })],
+]);
+
 /** `POST /__e2e/fault?host=…&mode=…` and `POST /__e2e/owner-reset?host=…`. */
 function handleFixtureControl(request, response) {
   const requestUrl = new URL(request.url ?? "/", "http://control.localhost");
@@ -1029,6 +1146,15 @@ const server = http.createServer((request, response) => {
 
   if (host === "admin-outage.localhost") {
     outagePortal.handle(request, response, faultModes.get(host) ?? "off");
+    return;
+  }
+
+  // The QR tenants answer only on their own admin hosts. The public hosts their addresses name
+  // (`menu.localhost`, `bistro.localhost`) are deliberately not handled here: the first is the
+  // real backend's published menu, which is what makes a scan verifiable end to end.
+  const qrTenant = qrTenants.get(host);
+  if (qrTenant) {
+    qrTenant.handle(request, response);
     return;
   }
 
