@@ -59,8 +59,9 @@ const PRICE_BUDGET = 16;
 const ADD_DISH_BUDGET = 20;
 /** Nav (1) + Monday opens "08:00" (1+5) + Monday closes "16:00" (1+5) + Save regular hours (1). */
 const REGULAR_HOURS_BUDGET = 14;
-/** Nav (1) + Edit (1) + note "Holiday brunch" (1+14) + opens "11:00" (1+5) + Save (1). */
-const SPECIAL_HOURS_BUDGET = 24;
+/** Nav (1) + Edit (1) + opens "11:00" (1+5) + Save (1). The note is no longer editable (BUG-004);
+ *  the entry keeps the note it was seeded with. */
+const SPECIAL_HOURS_BUDGET = 9;
 /** Nav (1) + choose a file (1) + alt text "Dining room" (1+11) + Upload photo (1). */
 const PHOTO_BUDGET = 15;
 /** Nav (1) + "+12045550188" (1+12) + "(204) 555-0188" (1+14) + "hello@riverbend.test" (1+20)
@@ -265,7 +266,8 @@ const walkthroughs: readonly Walkthrough[] = [
     },
     reachesPublicSite: async (page) => {
       await page.goto(`${ORIGIN}/`);
-      await expect(page.getByText(/08:00–16:00/).first()).toBeVisible();
+      // BUG-005: the public site reads the 12-hour clock, while the inputs above still take HH:mm.
+      await expect(page.getByText(/8:00 AM–4:00 PM/).first()).toBeVisible();
     },
   },
   {
@@ -280,7 +282,6 @@ const walkthroughs: readonly Walkthrough[] = [
       await click(effort, special.getByRole("button", { name: "Edit", exact: true }));
       await expect(special.getByLabel("Date")).toHaveValue("2026-12-25");
 
-      await typeInto(effort, special.getByLabel("Note"), "Holiday brunch");
       await typeInto(effort, special.getByLabel("Opens").first(), "11:00");
       await click(effort, special.getByRole("button", { name: "Save special date" }));
 
@@ -290,7 +291,8 @@ const walkthroughs: readonly Walkthrough[] = [
     },
     reachesPublicSite: async (page) => {
       await page.goto(`${ORIGIN}/`);
-      await expect(page.getByText(/2026-12-25.*11:00–14:00.*Holiday brunch/).first()).toBeVisible();
+      // The seeded note survives the edit untouched, because the editor sends it back as it was.
+      await expect(page.getByText(/2026-12-25.*11:00 AM–2:00 PM.*Christmas brunch/).first()).toBeVisible();
     },
   },
   {
@@ -444,7 +446,12 @@ test("every task can be completed with the keyboard alone", async ({ page }, tes
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Special hours" }) });
   await keyActivate(page, special.getByRole("button", { name: "Edit", exact: true }), "Edit special hours");
-  await keyType(page, special.getByLabel("Note"), "note", "Holiday brunch");
+  // The note used to be the keyboard edit here; it is no longer editable (BUG-004), so the owner
+  // marks the day closed instead. A checkbox toggles on Space, not Enter.
+  const closedAllDay = special.getByLabel("Closed all day");
+  await tabTo(page, closedAllDay, "Closed all day");
+  await page.keyboard.press("Space");
+  await expect(closedAllDay).toBeChecked();
   await keyActivate(page, special.getByRole("button", { name: "Save special date" }), "Save special date");
   await expect(page.getByText(/Special hours saved\./)).toBeVisible();
 

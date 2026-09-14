@@ -67,7 +67,8 @@ test("real owner workflow persists and publishes every Phase 3 restaurant field"
   await specialHours.getByRole("button", { name: "Add special period" }).click();
   await specialHours.getByLabel("Opens").nth(1).fill("17:00");
   await specialHours.getByLabel("Closes").nth(1).fill("23:00");
-  await specialHours.getByLabel("Note").fill("New Year's Eve service");
+  // BUG-004: the special-hours editor has no Note field, so a new date is saved without a note.
+  await expect(specialHours.getByLabel("Note")).toHaveCount(0);
   await specialHours.getByRole("button", { name: "Add special date" }).click();
   await expectSaved(page, "Special hours");
 
@@ -92,8 +93,11 @@ test("real owner workflow persists and publishes every Phase 3 restaurant field"
 
   const socialLinks = page.locator("section").filter({ has: page.getByRole("heading", { name: "Social links" }) });
   await socialLinks.getByRole("button", { name: "Add link" }).click();
-  await socialLinks.getByLabel("Platform").fill("instagram");
-  await socialLinks.getByLabel("URL").fill("https://www.instagram.com/real_prairie");
+  // BUG-006: the platform is chosen from the backend's keys rather than typed.
+  // The Development seed (BUG-002) already carries Instagram and Facebook, so the new row is the last one
+  // and uses a platform the seed does not — Instagram is disabled there as already in use.
+  await socialLinks.getByLabel("Platform").last().selectOption("youtube");
+  await socialLinks.getByLabel("URL").last().fill("https://www.youtube.com/@real_prairie");
   await socialLinks.getByRole("button", { name: "Save social links" }).click();
   await expectSaved(page, "Social links");
 
@@ -128,9 +132,10 @@ test("real owner workflow persists and publishes every Phase 3 restaurant field"
   await expect(page.getByRole("link", { name: "Call (204) 555-0199" })).toHaveAttribute("href", "tel:+12045550199");
   await expect(page.getByRole("link", { name: "hello@realprairie.test" })).toHaveAttribute("href", "mailto:hello@realprairie.test");
   await expect(page.getByText(/123 Real Stack Avenue, Suite 7, Winnipeg, MB, R3C 0A1, CA/)).toBeVisible();
-  await expect(page.getByText("09:00–14:00, 17:00–01:00 next day")).toBeVisible();
-  await expect(page.getByText(/2026-12-31.*10:00–14:00, 17:00–23:00.*New Year's Eve service/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "instagram" })).toHaveAttribute("href", "https://www.instagram.com/real_prairie");
+  // BUG-005: displayed times read on the 12-hour clock.
+  await expect(page.getByText("9:00 AM–2:00 PM, 5:00 PM–1:00 AM next day")).toBeVisible();
+  await expect(page.getByText(/2026-12-31.*10:00 AM–2:00 PM, 5:00 PM–11:00 PM/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "youtube" })).toHaveAttribute("href", "https://www.youtube.com/@real_prairie");
   await expect(page.getByRole("img", { name: "Accessible real dining room" })).toBeVisible();
   expect(await page.locator('meta[name="robots"]').getAttribute("content")).toContain("noindex");
   await expectNoSeriousAccessibilityViolations(page);
@@ -142,9 +147,9 @@ test("real owner workflow persists and publishes every Phase 3 restaurant field"
   await expect(page.getByRole("link", { name: "hello@realprairie.test" })).toHaveAttribute("href", "mailto:hello@realprairie.test");
   await expect(page.getByText(/123 Real Stack Avenue, Suite 7, Winnipeg, MB, R3C 0A1, CA/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Get directions" })).toHaveAttribute("href", /49\.8951.*-97\.1384/);
-  await expect(page.getByText("09:00–14:00, 17:00–01:00 next day")).toBeVisible();
-  await expect(page.getByText(/2026-12-31.*10:00–14:00, 17:00–23:00.*New Year's Eve service/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "instagram" })).toHaveAttribute("href", "https://www.instagram.com/real_prairie");
+  await expect(page.getByText("9:00 AM–2:00 PM, 5:00 PM–1:00 AM next day")).toBeVisible();
+  await expect(page.getByText(/2026-12-31.*10:00 AM–2:00 PM, 5:00 PM–11:00 PM/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "youtube" })).toHaveAttribute("href", "https://www.youtube.com/@real_prairie");
   await expect(page.getByRole("img", { name: "Accessible real dining room" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 

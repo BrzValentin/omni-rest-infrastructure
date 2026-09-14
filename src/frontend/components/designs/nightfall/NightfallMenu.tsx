@@ -8,7 +8,7 @@ import {
   DesignFooter,
   DesignSkipLink,
   HomeLink,
-  MenuNavigationLink,
+  PrimaryNavigationLink,
   MenuRestaurantActions,
 } from "../shared/PublicDesignParts";
 import { createDesignClassNames } from "../shared/designClassNames";
@@ -46,7 +46,7 @@ export default function NightfallMenu({ site }: WebsiteDesignMenuProps) {
       <header className={styles.header}>
         <HomeLink className={styles.brand} restaurantName={site.restaurantName} logo={site.restaurant?.logo} logoClassName={styles.brandLogo} />
         <nav aria-label="Primary navigation">
-          <MenuNavigationLink className={styles.navLink} />
+          <PrimaryNavigationLink className={styles.navLink} currentPage="menu" />
         </nav>
       </header>
       <main className={styles.menuMain} id="main-content" lang={site.locale}>

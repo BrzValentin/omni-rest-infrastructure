@@ -62,11 +62,53 @@ public sealed class RestaurantValidationTests
     [InlineData("linkedin", "https://linkedin.com/company/prairie-table", true)]
     [InlineData("linkedin", "https://www.linkedin.com/company/prairie-table", true)]
     [InlineData("linkedin", "https://m.linkedin.com/company/prairie-table", false)]
+    // BUG-006: numeric/ID-style profile URLs are valid; only the host is allow-listed, never the path or query.
+    [InlineData("facebook", "https://www.facebook.com/profile.php?id=100073564902779", true)]
+    [InlineData("facebook", "https://facebook.com/profile.php?id=100073564902779", true)]
+    [InlineData("facebook", "http://www.facebook.com/profile.php?id=100073564902779", false)]
+    [InlineData("facebook", "https://www.facebook.com.evil.example/profile.php?id=100073564902779", false)]
+    [InlineData("instagram", "https://www.instagram.com/p/C8x1Yz2AbCd/", true)]
+    [InlineData("tiktok", "https://www.tiktok.com/@prairie_table/video/7234567890123456789", true)]
+    [InlineData("google_business", "https://maps.google.com/?cid=12345678901234567890", true)]
+    [InlineData("x", "https://x.com/i/user/1234567890", true)]
+    [InlineData("youtube", "https://www.youtube.com/channel/UC1234567890abcdefghijkl", true)]
+    [InlineData("linkedin", "https://www.linkedin.com/company/12345678", true)]
+    // BUG-006: a URL is judged against the platform it was saved under, so a Facebook URL is not an Instagram link.
+    [InlineData("instagram", "https://www.facebook.com/profile.php?id=100073564902779", false)]
     public void SocialValidationEnforcesPlatformHttpsHosts(string platform, string url, bool valid)
     {
         var errors = RestaurantValidation.ValidateSocialLinks(
             new UpdateSocialLinksRequest([new AdminSocialLinkRequest(platform, url)]));
         Assert.Equal(valid, errors.Count == 0);
+    }
+
+    /// <summary>
+    /// BUG-006: the backend already accepts an Instagram link alongside an ID-style Facebook profile URL; the
+    /// failure lived in the frontend's free-text platform field. This pins the backend half so it cannot regress.
+    /// </summary>
+    [Fact]
+    public void InstagramAndIdStyleFacebookLinksAreValidTogether()
+    {
+        var errors = RestaurantValidation.ValidateSocialLinks(new UpdateSocialLinksRequest(
+        [
+            new AdminSocialLinkRequest("instagram", "https://www.instagram.com/prairie_table"),
+            new AdminSocialLinkRequest("facebook", "https://www.facebook.com/profile.php?id=100073564902779")
+        ]));
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void UrlSavedUnderTheWrongPlatformIsRejectedUnderThatPlatformOnly()
+    {
+        var errors = RestaurantValidation.ValidateSocialLinks(new UpdateSocialLinksRequest(
+        [
+            new AdminSocialLinkRequest("instagram", "https://www.facebook.com/profile.php?id=100073564902779"),
+            new AdminSocialLinkRequest("facebook", "https://www.facebook.com/profile.php?id=100073564902779")
+        ]));
+
+        Assert.Equal(["social_url_invalid"], errors["links.instagram"]);
+        Assert.DoesNotContain("links.facebook", errors.Keys);
     }
 
     [Fact]
@@ -116,6 +158,47 @@ public sealed class RestaurantValidationTests
         {
             Assert.Equal(["price_range_invalid"], errors["priceRange"]);
         }
+    }
+
+    /// <summary>
+    /// BUG-001: About is optional and blank means "none", so null, empty and whitespace-only all pass; the cap
+    /// is 2000 characters after trimming, reported under the same generic code <c>description</c> uses.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   \n\t  ")]
+    [InlineData("First paragraph.\n\nSecond paragraph.\r\n\r\nThird paragraph.")]
+    public void AboutAcceptsNullBlankAndMultiParagraphCopy(string? value)
+    {
+        Assert.Empty(RestaurantValidation.ValidateProfile(ValidProfile() with { About = value }));
+    }
+
+    [Fact]
+    public void AboutAcceptsExactlyTwoThousandCharactersAndMeasuresAfterTrimming()
+    {
+        var atLimit = new string('a', RestaurantValidation.MaximumAboutLength);
+        Assert.Equal(2000, atLimit.Length);
+        Assert.Empty(RestaurantValidation.ValidateProfile(ValidProfile() with { About = atLimit }));
+        Assert.Empty(RestaurantValidation.ValidateProfile(ValidProfile() with { About = $"  \n{atLimit}\n  " }));
+    }
+
+    [Fact]
+    public void AboutOverTwoThousandCharactersIsRejectedWithTheSameCodeAsDescription()
+    {
+        var errors = RestaurantValidation.ValidateProfile(ValidProfile() with { About = new string('a', 2001) });
+
+        Assert.Equal(["field_length_invalid"], errors["about"]);
+        Assert.Equal(["field_length_invalid"],
+            RestaurantValidation.ValidateProfile(ValidProfile() with { Description = new string('a', 301) })["description"]);
+    }
+
+    [Fact]
+    public void AboutRejectsControlCharactersOtherThanLineBreaksAndTabs()
+    {
+        var errors = RestaurantValidation.ValidateProfile(ValidProfile() with { About = "Hello\u0007world" });
+
+        Assert.Equal(["field_length_invalid"], errors["about"]);
     }
 
     private static string SocialUrl(string platform) => platform switch

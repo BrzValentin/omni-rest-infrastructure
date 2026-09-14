@@ -66,6 +66,11 @@ export type AdminRestaurant = {
    * characters and reports `website_url_invalid` when it is neither.
    */
   websiteUrl?: string | null;
+  /**
+   * The owner's longer "About Us" copy (BUG-001), up to 2000 characters. Optional in the type for the
+   * same reason as `websiteUrl`: a draft read from an older backend omits it.
+   */
+  about?: string | null;
 };
 export type AdminMutation = { restaurant: AdminRestaurant; publication: PublicationStatus };
 /**
@@ -105,10 +110,41 @@ export function isPriceRange(value: unknown): value is PriceRange {
   return typeof value === "string" && supportedPriceRanges.has(value);
 }
 
+/**
+ * The social platform keys the backend accepts, exactly as it matches them (ordinal, lower case).
+ *
+ * BUG-006: the editor used to take the platform as free text and default every new row to
+ * `instagram`, so a Facebook URL pasted into a second row was validated against Instagram's hosts and
+ * rejected. The owner now picks from this list. It mirrors the keys of `SocialHosts` in
+ * `src/backend/OmniRest.Api/Restaurants/RestaurantValidation.cs`, which remains the authority.
+ */
+export const socialPlatforms = [
+  "instagram", "facebook", "tiktok", "google_business", "x", "youtube", "linkedin",
+] as const;
+export type SocialPlatform = (typeof socialPlatforms)[number];
+const supportedSocialPlatforms = new Set<string>(socialPlatforms);
+
+export function isSocialPlatform(value: unknown): value is SocialPlatform {
+  return typeof value === "string" && supportedSocialPlatforms.has(value);
+}
+
+/** The names an owner knows each platform by; the stored value stays the key above. */
+export const socialPlatformLabels: Readonly<Record<SocialPlatform, string>> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+  google_business: "Google Business Profile",
+  x: "X (Twitter)",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+};
+
 export type PublicImage = Omit<MainImage, "id" | "processingStatus">;
 
 export type PublicRestaurant = {
   id: string; name: string; shortDescription: string | null;
+  /** "About Us" copy (BUG-001). Snapshots published before the field existed omit it; read as null. */
+  about: string | null;
   phone: { e164: string; display: string } | null; email: string | null; timeZone: string;
   address: ({ streetLine1: string; streetLine2: string | null; city: string; region: string;
     postalCode: string; countryCode: string; formatted: string; directionsUrl: string;

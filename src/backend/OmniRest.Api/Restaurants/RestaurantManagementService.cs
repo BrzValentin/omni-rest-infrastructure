@@ -42,6 +42,7 @@ public interface IRestaurantManagementService
 public sealed partial class RestaurantManagementService(
     MenuDbContext dbContext,
     PublicMenuProjectionBuilder projectionBuilder,
+    RestaurantStatusCalculator statusCalculator,
     PublicMenuSnapshotSerializer serializer,
     IInProcessPublicationDispatcher dispatcher,
     ILocalMediaStorage mediaStorage,
@@ -72,6 +73,8 @@ public sealed partial class RestaurantManagementService(
         restaurant.PhoneDisplay = request.PhoneDisplay?.Trim();
         restaurant.Email = request.Email?.Trim();
         restaurant.WebsiteUrl = string.IsNullOrWhiteSpace(request.WebsiteUrl) ? null : request.WebsiteUrl.Trim();
+        // BUG-001: same full-replacement semantics as WebsiteUrl — omitted, empty or whitespace clears it.
+        restaurant.About = string.IsNullOrWhiteSpace(request.About) ? null : request.About.Trim();
         restaurant.RestaurantType = string.IsNullOrEmpty(request.RestaurantType) ? null : request.RestaurantType;
         restaurant.PriceRange = string.IsNullOrEmpty(request.PriceRange) ? null : request.PriceRange;
         restaurant.Settings.TimeZoneId = request.TimeZone;
@@ -314,7 +317,10 @@ public sealed partial class RestaurantManagementService(
         }
         var menu = restaurant.Menus.SingleOrDefault(item => item.IsActive);
         var response = projectionBuilder.Build(restaurant, menu, restaurant.DraftVersion).Restaurant!;
-        return ManagementResult<PublicRestaurantResponse>.Success(response);
+        // BUG-007: the preview shows what the public site would show right now, so expired special hours are
+        // filtered here exactly as the public endpoints filter them at read time.
+        return ManagementResult<PublicRestaurantResponse>.Success(
+            PublicSpecialHoursVisibility.AtInstant(response, statusCalculator, timeProvider.GetUtcNow()));
     }
 
     public async Task<ManagementResult<PublicMenuResponse>> PreviewWebsiteDesignAsync(
@@ -334,8 +340,15 @@ public sealed partial class RestaurantManagementService(
         }
 
         var menu = restaurant.Menus.SingleOrDefault(item => item.IsActive);
-        return ManagementResult<PublicMenuResponse>.Success(
-            projectionBuilder.Build(restaurant, menu, restaurant.DraftVersion, designId));
+        var site = projectionBuilder.Build(restaurant, menu, restaurant.DraftVersion, designId);
+        // BUG-007: same read-time view as the public menu endpoint, so the design preview never shows a
+        // special-hours date the live site has already dropped.
+        return ManagementResult<PublicMenuResponse>.Success(site.Restaurant is null
+            ? site
+            : site with
+            {
+                Restaurant = PublicSpecialHoursVisibility.AtInstant(site.Restaurant, statusCalculator, timeProvider.GetUtcNow())
+            });
     }
 
     public async Task<ManagementResult<PublicationStatusResponse>> GetPublicationStatusAsync(
@@ -533,7 +546,21 @@ public sealed partial class RestaurantManagementService(
 
     private Task<RestaurantEntity?> LoadAggregateAsync(Guid restaurantId, bool tracking, CancellationToken cancellationToken)
     {
-        var query = dbContext.Restaurants
+        var query = AggregateQuery(dbContext).Where(item => item.Id == restaurantId);
+        if (!tracking)
+        {
+            query = query.AsNoTracking();
+        }
+        return query.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Everything <see cref="PublicMenuProjectionBuilder"/> reads, in one split query. Shared with the
+    /// Development sample-data backfill (BUG-002) so a snapshot it publishes is built from exactly the graph an
+    /// owner mutation would build it from, rather than from a hand-maintained copy of these includes.
+    /// </summary>
+    internal static IQueryable<RestaurantEntity> AggregateQuery(MenuDbContext context) =>
+        context.Restaurants
             .Include(item => item.Settings)
             .Include(item => item.Address)
             .Include(item => item.RegularHours)
@@ -545,14 +572,7 @@ public sealed partial class RestaurantManagementService(
             .Include(item => item.GalleryImages).ThenInclude(item => item.MediaAsset).ThenInclude(item => item.Variants)
             .Include(item => item.Menus).ThenInclude(item => item.Categories).ThenInclude(item => item.Dishes).ThenInclude(item => item.Badges).ThenInclude(item => item.Badge)
             .Include(item => item.Menus).ThenInclude(item => item.Categories).ThenInclude(item => item.Dishes).ThenInclude(item => item.MediaAsset).ThenInclude(item => item!.Variants)
-            .AsSplitQuery()
-            .Where(item => item.Id == restaurantId);
-        if (!tracking)
-        {
-            query = query.AsNoTracking();
-        }
-        return query.SingleOrDefaultAsync(cancellationToken);
-    }
+            .AsSplitQuery();
 
     private async Task<AdminRestaurantResponse> ToAdminAsync(RestaurantEntity restaurant, CancellationToken cancellationToken)
     {
@@ -593,7 +613,8 @@ public sealed partial class RestaurantManagementService(
             restaurant.PriceRange,
             ToAdminImage(restaurant.LogoMediaAsset),
             ToAdminImage(restaurant.CoverMediaAsset),
-            restaurant.WebsiteUrl);
+            restaurant.WebsiteUrl,
+            restaurant.About);
     }
 
     private static AdminMainImageResponse? ToAdminImage(MediaAssetEntity? asset) => asset is null ? null : new(

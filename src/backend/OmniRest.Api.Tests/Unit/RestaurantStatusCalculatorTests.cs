@@ -29,9 +29,9 @@ public sealed class RestaurantStatusCalculatorTests
     }
 
     [Theory]
-    [InlineData("2026-08-04T01:00:00Z", "closed", "Opens at 20:00")]
-    [InlineData("2026-08-04T19:59:59Z", "closed", "Opens at 20:00")]
-    [InlineData("2026-08-04T20:00:00Z", "open", "Closes at 02:00")]
+    [InlineData("2026-08-04T01:00:00Z", "closed", "Opens at 8:00 PM")]
+    [InlineData("2026-08-04T19:59:59Z", "closed", "Opens at 8:00 PM")]
+    [InlineData("2026-08-04T20:00:00Z", "open", "Closes at 2:00 AM")]
     public void CurrentDayOvernightNeverOpensBeforeItsStart(
         string now,
         string expectedState,
@@ -88,14 +88,14 @@ public sealed class RestaurantStatusCalculatorTests
         var status = calculator.Calculate(restaurant, DateTimeOffset.Parse("2026-08-04T01:00:00Z"));
 
         Assert.Equal(("closed", "regularHours"), (status.State, status.Source));
-        Assert.Equal("Opens at 20:00", status.Label);
+        Assert.Equal("Opens at 8:00 PM", status.Label);
         Assert.Equal(DateTimeOffset.Parse("2026-08-10T20:00:00Z"), status.NextChangeAt);
     }
 
     [Theory]
-    [InlineData("2026-08-04T01:00:00Z", "closed", "Opens at 10:00", "specialHours")]
-    [InlineData("2026-08-04T10:00:00Z", "open", "Closes at 14:00", "specialHours")]
-    [InlineData("2026-08-04T14:00:00Z", "closed", "Opens at 20:00", "regularHours")]
+    [InlineData("2026-08-04T01:00:00Z", "closed", "Opens at 10:00 AM", "specialHours")]
+    [InlineData("2026-08-04T10:00:00Z", "open", "Closes at 2:00 PM", "specialHours")]
+    [InlineData("2026-08-04T14:00:00Z", "closed", "Opens at 8:00 PM", "regularHours")]
     public void TodayOpenSpecialSuppressesPreviousCarryoverAndUsesInclusiveStartExclusiveEnd(
         string now,
         string expectedState,
@@ -162,7 +162,7 @@ public sealed class RestaurantStatusCalculatorTests
 
         var status = calculator.Calculate(restaurant, DateTimeOffset.Parse("2026-08-04T18:00:00Z"));
 
-        Assert.Equal(("closed", "Opens at 09:00", "regularHours"), (status.State, status.Label, status.Source));
+        Assert.Equal(("closed", "Opens at 9:00 AM", "regularHours"), (status.State, status.Label, status.Source));
         Assert.Equal(DateTimeOffset.Parse("2026-08-05T09:00:00Z"), status.NextChangeAt);
     }
 
@@ -175,7 +175,7 @@ public sealed class RestaurantStatusCalculatorTests
 
         var status = calculator.Calculate(restaurant, DateTimeOffset.Parse("2026-08-04T10:00:00Z"));
 
-        Assert.Equal(("open", "Closes at 17:00", "regularHours"), (status.State, status.Label, status.Source));
+        Assert.Equal(("open", "Closes at 5:00 PM", "regularHours"), (status.State, status.Label, status.Source));
         Assert.Equal(DateTimeOffset.Parse("2026-08-04T17:00:00Z"), status.NextChangeAt);
     }
 
@@ -188,7 +188,7 @@ public sealed class RestaurantStatusCalculatorTests
 
         var status = calculator.Calculate(restaurant, DateTimeOffset.Parse("2026-08-04T12:00:00Z"));
 
-        Assert.Equal(("closed", "Opens at 08:30", "regularHours"), (status.State, status.Label, status.Source));
+        Assert.Equal(("closed", "Opens at 8:30 AM", "regularHours"), (status.State, status.Label, status.Source));
         Assert.Equal(DateTimeOffset.Parse("2026-08-07T08:30:00Z"), status.NextChangeAt);
     }
 
@@ -206,7 +206,7 @@ public sealed class RestaurantStatusCalculatorTests
 
         var status = calculator.Calculate(restaurant, DateTimeOffset.Parse("2026-08-03T18:00:00Z"));
 
-        Assert.Equal(("closed", "Opens at 09:00", "regularHours"), (status.State, status.Label, status.Source));
+        Assert.Equal(("closed", "Opens at 9:00 AM", "regularHours"), (status.State, status.Label, status.Source));
         Assert.Equal(DateTimeOffset.Parse("2026-08-05T09:00:00Z"), status.NextChangeAt);
     }
 
@@ -223,7 +223,7 @@ public sealed class RestaurantStatusCalculatorTests
 
         var status = calculator.Calculate(restaurant, DateTimeOffset.Parse("2026-08-03T18:00:00Z"));
 
-        Assert.Equal(("closed", "Opens at 11:30", "specialHours"), (status.State, status.Label, status.Source));
+        Assert.Equal(("closed", "Opens at 11:30 AM", "specialHours"), (status.State, status.Label, status.Source));
         Assert.Equal(DateTimeOffset.Parse("2026-08-04T11:30:00Z"), status.NextChangeAt);
     }
 
@@ -239,8 +239,8 @@ public sealed class RestaurantStatusCalculatorTests
     }
 
     [Theory]
-    [InlineData("2026-08-04T23:00:00Z", "Closes at 02:00")]
-    [InlineData("2026-08-05T01:00:00Z", "Closes at 02:00")]
+    [InlineData("2026-08-04T23:00:00Z", "Closes at 2:00 AM")]
+    [InlineData("2026-08-05T01:00:00Z", "Closes at 2:00 AM")]
     public void OvernightIntervalReportsClosingTimeBeforeAndAfterMidnight(string now, string expectedLabel)
     {
         var restaurant = CreateRestaurant(
@@ -251,6 +251,33 @@ public sealed class RestaurantStatusCalculatorTests
 
         Assert.Equal(("open", expectedLabel, "regularHours"), (status.State, status.Label, status.Source));
         Assert.Equal(DateTimeOffset.Parse("2026-08-05T02:00:00Z"), status.NextChangeAt);
+    }
+
+    /// <summary>
+    /// BUG-005: the label is 12-hour display text. Midnight and noon are where a 12-hour format goes wrong
+    /// ("0:00", or "12:00" with the wrong designator), so both are pinned for opening and closing.
+    /// </summary>
+    [Theory]
+    [InlineData(2, "18:00", "00:00", true, "2026-08-04T19:00:00Z", "open", "Closes at 12:00 AM")]
+    [InlineData(3, "00:00", "06:00", false, "2026-08-04T12:00:00Z", "closed", "Opens at 12:00 AM")]
+    [InlineData(2, "12:00", "15:00", false, "2026-08-04T09:00:00Z", "closed", "Opens at 12:00 PM")]
+    [InlineData(2, "08:00", "12:00", false, "2026-08-04T10:00:00Z", "open", "Closes at 12:00 PM")]
+    public void StatusLabelUsesTwelveHourClockWithMidnightAsTwelveAmAndNoonAsTwelvePm(
+        int dayOfWeek,
+        string opens,
+        string closes,
+        bool overnight,
+        string now,
+        string expectedState,
+        string expectedLabel)
+    {
+        var restaurant = CreateRestaurant(
+            regular: [new PublicRegularHours(dayOfWeek, [Interval(opens, closes, overnight)])],
+            special: []);
+
+        var status = calculator.Calculate(restaurant, DateTimeOffset.Parse(now));
+
+        Assert.Equal((expectedState, expectedLabel), (status.State, status.Label));
     }
 
     private static PublicHourInterval Interval(string opens, string closes, bool overnight = false) =>

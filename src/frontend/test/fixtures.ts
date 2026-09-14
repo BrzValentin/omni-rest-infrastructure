@@ -41,6 +41,7 @@ export const ordinaryRestaurant: PublicRestaurant = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "Prairie Table",
   shortDescription: "Seasonal dishes from local ingredients.",
+  about: "We started as a long table and a short menu.\n\nToday we still cook what the season brings.",
   phone: { e164: "+12045550123", display: "(204) 555-0123" },
   email: "hello@example.test",
   timeZone: "America/Winnipeg",

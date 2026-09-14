@@ -141,6 +141,9 @@ function parseRestaurant(
     id: uuid(restaurant.id, "restaurant.id"),
     name: nonblank(restaurant.name, "restaurant.name"),
     shortDescription: nullableString(restaurant.shortDescription, "restaurant.shortDescription"),
+    // BUG-001. Every snapshot published before the About field existed omits it, so absence is null
+    // rather than a parse failure that would take the whole public page down.
+    about: restaurant.about === undefined ? null : nullableString(restaurant.about, "restaurant.about"),
     phone: restaurant.phone === null
       ? null
       : parsePhone(restaurant.phone, "restaurant.phone"),

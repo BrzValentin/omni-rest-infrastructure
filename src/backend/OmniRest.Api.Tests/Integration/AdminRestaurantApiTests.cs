@@ -884,6 +884,106 @@ public sealed class AdminRestaurantApiTests(PostgresFixture postgres)
     }
 
     /// <summary>
+    /// BUG-001: the owner's About copy is trimmed and saved, returned by the admin read, carried into both the
+    /// draft preview and the published public contract with its paragraph breaks, refused over 2000 characters
+    /// without touching the draft, and cleared by a blank value. The profile PUT is a full replacement like
+    /// <c>websiteUrl</c>, so a client that omits the property clears it too; that is pinned here so a change of
+    /// semantics is a deliberate decision rather than an accident.
+    /// </summary>
+    [Fact]
+    public async Task RestaurantAboutReachesAdminPreviewAndPublicContractsAndBlankOrOmittedAboutClearsIt()
+    {
+        using var factory = postgres.CreateFactory();
+        await postgres.RecreateLatestAndSeedAsync(factory);
+        await CreateOwnerAsync(factory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(current);
+        Assert.Null(current.About);
+
+        const string about = "We cook what the prairies grow.\n\nEverything is made in-house, every day.";
+        var saved = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { About = $"  \n{about}\n  " },
+            await GetAntiforgeryAsync(client),
+            current.ETag);
+        Assert.Equal(about, saved.Restaurant.About);
+        Assert.Equal(PublicationStatuses.Succeeded, saved.Publication.Status);
+        Assert.Equal("Seasonal local food", saved.Restaurant.Description);
+
+        Assert.Equal(about, (await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant"))!.About);
+        Assert.Equal(about, (await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/admin/restaurant/preview"))!.About);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var published = await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant");
+        Assert.Equal(about, published!.About);
+        Assert.Equal("Seasonal local food", published.ShortDescription);
+        var publicMenu = await client.GetFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>("/api/v1/public/menu");
+        Assert.Equal(about, publicMenu!.Restaurant!.About);
+        client.DefaultRequestHeaders.Host = "localhost";
+
+        using (var tooLong = await PutWithHeadersAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { About = new string('a', 2001) },
+            await GetAntiforgeryAsync(client),
+            saved.Restaurant.ETag))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+            var problem = await tooLong.Content.ReadFromJsonAsync<ValidationProblemBody>();
+            Assert.Equal("admin_validation", problem?.Code);
+            Assert.NotNull(problem?.Errors);
+            Assert.Equal(["field_length_invalid"], problem.Errors["about"]);
+        }
+        var unchanged = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.Equal(about, unchanged!.About);
+        Assert.Equal(saved.Restaurant.ETag, unchanged.ETag);
+
+        var atLimit = new string('a', 2000);
+        var longest = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { About = atLimit },
+            await GetAntiforgeryAsync(client),
+            unchanged.ETag);
+        Assert.Equal(atLimit, longest.Restaurant.About);
+
+        var blank = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { About = " \n\t " },
+            await GetAntiforgeryAsync(client),
+            longest.Restaurant.ETag);
+        Assert.Null(blank.Restaurant.About);
+
+        var restored = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            ValidProfile("Prairie Table") with { About = about },
+            await GetAntiforgeryAsync(client),
+            blank.Restaurant.ETag);
+        Assert.Equal(about, restored.Restaurant.About);
+
+        // A pre-BUG-001 client sends no "about" property at all.
+        var withoutAbout = System.Text.Json.JsonSerializer.SerializeToNode(
+            ValidProfile("Prairie Table"),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!.AsObject();
+        Assert.True(withoutAbout.Remove("about"));
+        var omitted = await PutMutationAsync(
+            client,
+            "/api/v1/admin/restaurant/profile",
+            withoutAbout,
+            await GetAntiforgeryAsync(client),
+            restored.Restaurant.ETag);
+        Assert.Null(omitted.Restaurant.About);
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        Assert.Null((await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant"))!.About);
+    }
+
+    /// <summary>
     /// A second special-hours entry on a date that already has one is the owner's mistake to fix in the form,
     /// so it comes back as a field-level validation problem naming the date, not as the opaque
     /// <c>data_conflict</c> the bare unique-index violation used to produce.
@@ -938,6 +1038,91 @@ public sealed class AdminRestaurantApiTests(PostgresFixture postgres)
         var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
         Assert.Equal(1, await db.SpecialHours.CountAsync(
             item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId));
+    }
+
+    /// <summary>
+    /// BUG-007: a special-hours date that has passed disappears from every public view without a republish and
+    /// without being deleted. The clock starts at 23:30 CDT on 2026-08-04, which is already 2026-08-05 in UTC,
+    /// so the entry dated 2026-08-04 also proves the cut-off is the restaurant's local midnight, not UTC's.
+    /// </summary>
+    [Fact]
+    public async Task ExpiredSpecialHoursAreHiddenFromPublicViewsButStillListedForTheOwner()
+    {
+        var clock = new ShiftedTimeProvider(DateTimeOffset.Parse("2026-08-05T04:30:00Z"));
+        using var baseFactory = postgres.CreateFactory();
+        using var factory = baseFactory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(clock);
+        }));
+        await postgres.RecreateLatestAndSeedAsync(baseFactory);
+        await CreateOwnerAsync(baseFactory, GuardedSampleDataSeeder.OrdinaryRestaurantId);
+        using var client = CreateSecureClient(factory);
+        await LoginAsync(client);
+        var current = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.NotNull(current);
+        Assert.Equal("America/Winnipeg", current.TimeZone);
+
+        var etag = current.ETag;
+        foreach (var special in new[]
+        {
+            new AdminSpecialHoursRequest("2026-08-01", true, "Past closure", []),
+            new AdminSpecialHoursRequest("2026-08-04", false, "Today's short hours", [new("11:00", "15:00")]),
+            new AdminSpecialHoursRequest("2026-08-20", true, "Future closure", [])
+        })
+        {
+            using var created = await SendWithHeadersAsync(
+                client, HttpMethod.Post, "/api/v1/admin/special-hours", special, await GetAntiforgeryAsync(client), etag);
+            Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+            var mutation = (await created.Content.ReadFromJsonAsync<AdminMutationResponse>())!;
+            Assert.Equal(PublicationStatuses.Succeeded, mutation.Publication.Status);
+            etag = mutation.Restaurant.ETag;
+        }
+
+        string[] visible = ["2026-08-04", "2026-08-20"];
+
+        // The owner's preview matches what the public site shows.
+        var preview = await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/admin/restaurant/preview");
+        Assert.Equal(visible, preview!.SpecialHours.Select(item => item.Date).ToArray());
+
+        client.DefaultRequestHeaders.Host = "menu.localhost";
+        var publicRestaurant = await client.GetFromJsonAsync<PublicRestaurantResponse>("/api/v1/public/restaurant");
+        Assert.Equal(visible, publicRestaurant!.SpecialHours.Select(item => item.Date).ToArray());
+        var publicMenu = await client.GetFromJsonAsync<OmniRest.Api.Menus.PublicMenuResponse>("/api/v1/public/menu");
+        Assert.Equal(visible, publicMenu!.Restaurant!.SpecialHours.Select(item => item.Date).ToArray());
+
+        // Nothing was deleted: the admin view and the table still hold the past date.
+        client.DefaultRequestHeaders.Host = "localhost";
+        var admin = await client.GetFromJsonAsync<AdminRestaurantResponse>("/api/v1/admin/restaurant");
+        Assert.Equal(
+            ["2026-08-01", "2026-08-04", "2026-08-20"],
+            admin!.SpecialHours.Select(item => item.Date).ToArray());
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MenuDbContext>();
+        Assert.Equal(3, await db.SpecialHours.CountAsync(
+            item => item.RestaurantId == GuardedSampleDataSeeder.OrdinaryRestaurantId));
+    }
+
+    /// <summary>
+    /// Starts the clock at a chosen instant and lets it run forward in real time from there, so the date
+    /// boundary under test is deterministic while auth, antiforgery, and publication still see time advance.
+    /// Timers stay on real time.
+    /// </summary>
+    private sealed class ShiftedTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private readonly long startedAt = TimeProvider.System.GetTimestamp();
+
+        public override DateTimeOffset GetUtcNow() => start + TimeProvider.System.GetElapsedTime(startedAt);
+
+        public override long GetTimestamp() => TimeProvider.System.GetTimestamp();
+
+        public override long TimestampFrequency => TimeProvider.System.TimestampFrequency;
+
+        public override TimeZoneInfo LocalTimeZone => TimeProvider.System.LocalTimeZone;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            TimeProvider.System.CreateTimer(callback, state, dueTime, period);
     }
 
     /// <summary>The shape <see cref="ApiProblems.Validation"/> writes, so a test can name one field's codes.</summary>

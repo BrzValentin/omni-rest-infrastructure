@@ -26,6 +26,7 @@ public static partial class RestaurantValidation
         if (request is null) { Add(errors, "request", "request_required"); return ToArrays(errors); }
         ValidateText(errors, "name", request.Name, 1, 120, required: true);
         ValidateText(errors, "description", request.Description, 1, 300, required: false);
+        ValidateAbout(errors, request.About);
         if (request.PhoneE164 is not null && !E164().IsMatch(request.PhoneE164))
         {
             Add(errors, "phoneE164", "phone_e164_invalid");
@@ -152,6 +153,31 @@ public static partial class RestaurantValidation
 
     /// <summary>Longest URL any restaurant field may hold; matches the <c>url</c> columns.</summary>
     public const int MaximumUrlLength = 2048;
+
+    /// <summary>Longest "About Us" copy after trimming (BUG-001); matches <c>restaurants.about</c>.</summary>
+    public const int MaximumAboutLength = 2000;
+
+    /// <summary>
+    /// BUG-001: the About copy is keyed and coded exactly like <c>description</c> (<c>field_length_invalid</c>)
+    /// so the owner form handles both with one rule, but it cannot reuse <see cref="ValidateText"/> for two
+    /// reasons: whitespace-only must clear the field rather than fail (the service stores it as null), and
+    /// the copy is paragraphs, so line breaks and tabs are legitimate where every other control character is
+    /// still refused.
+    /// </summary>
+    private static void ValidateAbout(Dictionary<string, List<string>> errors, string? about)
+    {
+        if (string.IsNullOrWhiteSpace(about))
+        {
+            return;
+        }
+
+        var trimmed = about.Trim();
+        if (trimmed.Length > MaximumAboutLength ||
+            trimmed.Any(character => char.IsControl(character) && character is not ('\n' or '\r' or '\t')))
+        {
+            Add(errors, "about", "field_length_invalid");
+        }
+    }
 
     /// <summary>
     /// The shared rule for every owner-supplied URL that reaches the public page: an absolute https URL

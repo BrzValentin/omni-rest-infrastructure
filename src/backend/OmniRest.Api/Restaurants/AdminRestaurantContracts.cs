@@ -31,7 +31,14 @@ public sealed record UpdateRestaurantProfileRequest(
     /// The restaurant's own site. Null or empty clears it; otherwise an absolute https URL of at most
     /// 2048 characters (PR-24). Trailing position keeps every existing positional construction valid.
     /// </summary>
-    string? WebsiteUrl = null);
+    string? WebsiteUrl = null,
+
+    /// <summary>
+    /// BUG-001: the longer "About Us" copy. Trimmed; null, empty or whitespace clears it; at most 2000
+    /// characters after trimming, line breaks allowed. Like <see cref="WebsiteUrl"/>, the profile PUT is a full
+    /// replacement, so a client that omits the field clears a stored value.
+    /// </summary>
+    string? About = null);
 
 public sealed record AdminHourIntervalRequest(string OpensAt, string ClosesAt);
 public sealed record AdminRegularHoursDayRequest(int DayOfWeek, IReadOnlyList<AdminHourIntervalRequest> Intervals);
@@ -117,7 +124,10 @@ public sealed record AdminRestaurantResponse(
     AdminMainImageResponse? CoverImage = null,
 
     /// <summary>The saved website link, so the owner form round-trips what it stored (PR-24).</summary>
-    string? WebsiteUrl = null);
+    string? WebsiteUrl = null,
+
+    /// <summary>The saved "About Us" copy, so the owner form round-trips what it stored (BUG-001).</summary>
+    string? About = null);
 
 public sealed record AdminMutationResponse(AdminRestaurantResponse Restaurant, PublicationStatusResponse Publication);
 

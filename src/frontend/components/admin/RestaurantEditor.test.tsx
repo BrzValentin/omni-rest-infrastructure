@@ -82,7 +82,6 @@ describe("RestaurantEditor", () => {
     await user.click(within(specialSection).getByLabelText("Closed all day"));
     setValue(within(specialSection).getByLabelText("Opens"), "20:00");
     setValue(within(specialSection).getByLabelText("Closes"), "01:00");
-    setValue(within(specialSection).getByLabelText("Note"), "New Year");
     await user.click(screen.getByRole("button", { name: "Add special date" }));
     expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/special-hours", "POST", expect.any(Object), '"draft-3"');
     await user.click(screen.getByRole("button", { name: "Delete special hours for 2026-12-25" }));
@@ -94,7 +93,7 @@ describe("RestaurantEditor", () => {
     expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/special-hours/special", "DELETE", {}, '"draft-3"');
 
     const socialSection = screen.getByRole("heading", { name: "Social links" }).parentElement!;
-    setValue(within(socialSection).getByLabelText("Platform"), "facebook");
+    await user.selectOptions(within(socialSection).getByLabelText("Platform"), "facebook");
     setValue(within(socialSection).getByLabelText("URL"), "https://facebook.com/example");
     await user.click(within(socialSection).getByRole("button", { name: "Remove" }));
     await user.click(screen.getByRole("button", { name: "Add link" }));
@@ -254,6 +253,36 @@ describe("RestaurantEditor", () => {
       expect.objectContaining({ websiteUrl: null }), '"draft-3"'));
   });
 
+  it("saves the About us text with the profile, keeping the owner's paragraph breaks (BUG-001)", async () => {
+    const user = userEvent.setup();
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+
+    const about = screen.getByLabelText("About us");
+    expect(about).toHaveAttribute("maxLength", "2000");
+    fireEvent.change(about, { target: { value: "  Our story.\n\nOur kitchen.  " } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/profile", "PUT",
+      expect.objectContaining({ about: "Our story.\n\nOur kitchen." }), '"draft-3"'));
+  });
+
+  it("tells the owner the public map needs both coordinates (BUG-003)", () => {
+    render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+    expect(screen.getByText(/Add both coordinates to show a map of your location/)).toBeVisible();
+  });
+
+  it("clears About us when the field is left blank, which hides the public section", async () => {
+    const user = userEvent.setup();
+    render(<RestaurantEditor initial={{ ...initial, about: "Old story" }} initialMedia={[]} />);
+
+    expect(screen.getByLabelText("About us")).toHaveValue("Old story");
+    fireEvent.change(screen.getByLabelText("About us"), { target: { value: "   " } });
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/profile", "PUT",
+      expect.objectContaining({ about: null }), '"draft-3"'));
+  });
+
   it("offers time zones as places to pick rather than an identifier to type", () => {
     render(<RestaurantEditor initial={initial} initialMedia={[]} />);
 
@@ -343,5 +372,160 @@ describe("RestaurantEditor", () => {
     expect(mocks.browserGet).toHaveBeenCalledWith("/api/v1/admin/publication-status/new-operation");
     expect(screen.getByText("Website up to date", { selector: "strong" })).toBeVisible();
     vi.useRealTimers();
+  });
+
+  // Each of these renders the whole editor and ends with a full axe run, which under coverage
+  // instrumentation can approach the default 5s timeout on its own.
+  describe("phase 1 bug report", { timeout: 15_000 }, () => {
+    const axeOptions = { rules: { "color-contrast": { enabled: false } } };
+    const sectionTitled = (name: string) => screen.getByRole("heading", { name }).parentElement!;
+
+    it("lists saved special hours on the 12-hour clock with the next-day suffix, while the time inputs keep HH:mm (BUG-005)", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<RestaurantEditor initial={{
+        ...initial,
+        specialHours: [{ id: "late", date: "2026-12-31", isClosed: false, note: "Late service", intervals: [{ opensAt: "20:00:00", closesAt: "01:00:00", closesNextDay: true }] }],
+      }} initialMedia={[]} />);
+      const special = sectionTitled("Special hours");
+
+      expect(within(special).getByText(/8:00 PM–1:00 AM next day \(Late service\)/)).toBeVisible();
+      expect(within(special).queryByText(/\d\d:\d\d–/)).toBeNull();
+
+      await user.click(within(special).getByRole("button", { name: "Edit" }));
+      expect(within(special).getByLabelText("Opens")).toHaveValue("20:00");
+      expect(within(special).getByLabelText("Closes")).toHaveValue("01:00");
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("offers no Note field in the special-hours editor, so nothing can be painted over an interval's Remove button (BUG-004)", async () => {
+      const { container } = render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+      const special = sectionTitled("Special hours");
+
+      expect(within(special).queryByLabelText("Note")).toBeNull();
+      expect(within(screen.getByRole("group", { name: "Special-hour intervals" })).getByRole("button", { name: "Remove special period 1" })).toBeVisible();
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("sends an edited special date's existing note back unchanged even though the note cannot be edited (BUG-004)", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+      const special = sectionTitled("Special hours");
+
+      await user.click(within(special).getByRole("button", { name: "Edit" }));
+      await user.click(within(special).getByRole("button", { name: "Save special date" }));
+
+      await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/special-hours/special", "PUT",
+        { date: "2026-12-25", isClosed: true, note: "Holiday", intervals: [] }, '"draft-3"'));
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("sends no note for a new special date and still removes an unwanted period with its Remove button (BUG-004)", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+      const special = sectionTitled("Special hours");
+
+      fireEvent.change(within(special).getByLabelText("Date"), { target: { value: "2026-12-31" } });
+      await user.click(within(special).getByRole("button", { name: "Add special period" }));
+      expect(within(special).getAllByLabelText("Opens")).toHaveLength(2);
+      await user.click(within(special).getByRole("button", { name: "Remove special period 2" }));
+      expect(within(special).getAllByLabelText("Opens")).toHaveLength(1);
+      await user.click(within(special).getByRole("button", { name: "Add special date" }));
+
+      await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/special-hours", "POST",
+        { date: "2026-12-31", isClosed: false, note: null, intervals: [{ opensAt: "09:00", closesAt: "17:00" }] }, '"draft-3"'));
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("adds a second social link from a pasted Facebook profile URL and saves both links with their own platforms (BUG-006)", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+      const social = sectionTitled("Social links");
+
+      await user.click(within(social).getByRole("button", { name: "Add link" }));
+      const url = within(social).getAllByLabelText("URL")[1];
+      await user.clear(url);
+      await user.paste("https://www.facebook.com/profile.php?id=100073564902779");
+
+      const platform = within(social).getAllByLabelText("Platform")[1];
+      expect(platform.tagName).toBe("SELECT");
+      expect(platform).toHaveValue("facebook");
+      expect(platform).toHaveDisplayValue("Facebook");
+
+      await user.click(within(social).getByRole("button", { name: "Save social links" }));
+      await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith("/api/v1/admin/restaurant/social-links", "PUT", {
+        links: [
+          { platform: "instagram", url: "https://instagram.com/example" },
+          { platform: "facebook", url: "https://www.facebook.com/profile.php?id=100073564902779" },
+        ],
+      }, '"draft-3"'));
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("switches a row to the platform its pasted URL belongs to, unless another row already uses that platform (BUG-006)", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+      const social = sectionTitled("Social links");
+
+      await user.click(within(social).getByRole("button", { name: "Add link" }));
+      const url = within(social).getAllByLabelText("URL")[1];
+      const platform = within(social).getAllByLabelText("Platform")[1];
+      expect(platform).toHaveValue("facebook");
+
+      await user.clear(url);
+      await user.paste("https://youtu.be/prairie-table");
+      expect(platform).toHaveValue("youtube");
+
+      // Instagram belongs to the first row; the backend's URL error explains this better than a
+      // silent switch into a duplicate platform would.
+      await user.clear(url);
+      await user.paste("https://www.instagram.com/someone-else");
+      expect(platform).toHaveValue("youtube");
+      expect(within(social).getAllByLabelText("Platform")[0]).toHaveValue("instagram");
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("disables in each row the platforms that other rows already use (BUG-006)", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<RestaurantEditor initial={initial} initialMedia={[]} />);
+      const social = sectionTitled("Social links");
+
+      await user.click(within(social).getByRole("button", { name: "Add link" }));
+      const [first, second] = within(social).getAllByLabelText("Platform");
+
+      expect(within(first).getByRole("option", { name: "Instagram" })).toBeEnabled();
+      expect(within(first).getByRole("option", { name: "Facebook" })).toBeDisabled();
+      expect(within(first).getByRole("option", { name: "Google Business Profile" })).toBeEnabled();
+      expect(within(second).getByRole("option", { name: "Instagram" })).toBeDisabled();
+      expect(within(second).getByRole("option", { name: "Facebook" })).toBeEnabled();
+
+      await user.selectOptions(second, "linkedin");
+      expect(within(first).getByRole("option", { name: "Facebook" })).toBeEnabled();
+      expect(within(first).getByRole("option", { name: "LinkedIn" })).toBeDisabled();
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
+
+    it("starts a new link on the only platform left and then disables Add link with a visible reason (BUG-006)", async () => {
+      const user = userEvent.setup();
+      const sixLinks = [
+        { platform: "instagram", url: "https://instagram.com/example" },
+        { platform: "facebook", url: "https://facebook.com/example" },
+        { platform: "tiktok", url: "https://tiktok.com/@example" },
+        { platform: "google_business", url: "https://maps.app.goo.gl/example" },
+        { platform: "x", url: "https://x.com/example" },
+        { platform: "youtube", url: "https://youtube.com/@example" },
+      ];
+      const { container } = render(<RestaurantEditor initial={{ ...initial, socialLinks: sixLinks }} initialMedia={[]} />);
+      const social = sectionTitled("Social links");
+      const addLink = within(social).getByRole("button", { name: "Add link" });
+      expect(addLink).toBeEnabled();
+      expect(within(social).queryByText(/Every supported platform already has a link/)).toBeNull();
+
+      await user.click(addLink);
+
+      expect(within(social).getAllByLabelText("Platform").at(-1)).toHaveValue("linkedin");
+      expect(addLink).toBeDisabled();
+      expect(within(social).getByText(/Every supported platform already has a link/)).toBeVisible();
+      expect((await axe.run(container, axeOptions)).violations).toEqual([]);
+    });
   });
 });

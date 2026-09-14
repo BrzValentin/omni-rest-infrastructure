@@ -5,7 +5,8 @@ import {
   DesignFooter,
   DesignSkipLink,
   HomeLink,
-  MenuNavigationLink,
+  PrimaryNavigationLink,
+  RestaurantAbout,
   RestaurantActions,
   RestaurantContact,
   RestaurantHeroImage,
@@ -26,7 +27,7 @@ export default function NightfallHome({ restaurant }: WebsiteDesignHomeProps) {
       <header className={styles.header}>
         <HomeLink className={styles.brand} restaurantName={name} logo={restaurant?.logo} logoClassName={styles.brandLogo} />
         <nav aria-label="Primary navigation">
-          <MenuNavigationLink className={styles.navLink} />
+          <PrimaryNavigationLink className={styles.navLink} currentPage="home" />
         </nav>
       </header>
       <main className={styles.homeMain} id="main-content">
@@ -53,6 +54,7 @@ export default function NightfallHome({ restaurant }: WebsiteDesignHomeProps) {
         </section>
         {restaurant ? (
           <>
+            <RestaurantAbout restaurant={restaurant} className={styles.specialSection} headingId="nightfall-about" />
             <div className={styles.detailsGrid}>
               <RestaurantHours
                 restaurant={restaurant}

@@ -5,7 +5,8 @@ import {
   DesignFooter,
   DesignSkipLink,
   HomeLink,
-  MenuNavigationLink,
+  PrimaryNavigationLink,
+  RestaurantAbout,
   RestaurantActions,
   RestaurantContact,
   RestaurantHeroImage,
@@ -26,7 +27,7 @@ export default function BroadsheetHome({ restaurant }: WebsiteDesignHomeProps) {
       <header className={styles.header}>
         <p className={styles.edition}>Today&apos;s edition</p>
         <HomeLink className={styles.brand} restaurantName={name} logo={restaurant?.logo} logoClassName={styles.brandLogo} />
-        <nav aria-label="Primary navigation"><MenuNavigationLink className={styles.navLink} /></nav>
+        <nav aria-label="Primary navigation"><PrimaryNavigationLink className={styles.navLink} currentPage="home" /></nav>
       </header>
       <main className={styles.homeMain} id="main-content">
         <section className={styles.hero} aria-labelledby="broadsheet-title">
@@ -52,6 +53,7 @@ export default function BroadsheetHome({ restaurant }: WebsiteDesignHomeProps) {
         </section>
         {restaurant ? (
           <>
+            <RestaurantAbout restaurant={restaurant} className={styles.specialSection} headingId="sheet-about" />
             <div className={styles.detailsGrid}>
               <RestaurantContact restaurant={restaurant} className={styles.detailSection} linkClassName={styles.textLink} headingId="sheet-visit" />
               <RestaurantHours restaurant={restaurant} className={styles.hoursSection} headingId="sheet-hours" />

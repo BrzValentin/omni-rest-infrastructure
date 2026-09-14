@@ -5,7 +5,8 @@ import {
   DesignFooter,
   DesignSkipLink,
   HomeLink,
-  MenuNavigationLink,
+  PrimaryNavigationLink,
+  RestaurantAbout,
   RestaurantActions,
   RestaurantContact,
   RestaurantHeroImage,
@@ -25,7 +26,7 @@ export default function SunroomHome({ restaurant }: WebsiteDesignHomeProps) {
       <DesignSkipLink className={styles.skipLink} />
       <header className={styles.header}>
         <HomeLink className={styles.brand} restaurantName={name} logo={restaurant?.logo} logoClassName={styles.brandLogo} />
-        <nav aria-label="Primary navigation"><MenuNavigationLink className={styles.navLink} /></nav>
+        <nav aria-label="Primary navigation"><PrimaryNavigationLink className={styles.navLink} currentPage="home" /></nav>
       </header>
       <main className={styles.homeMain} id="main-content">
         <section className={styles.hero} aria-labelledby="sunroom-title">
@@ -41,6 +42,7 @@ export default function SunroomHome({ restaurant }: WebsiteDesignHomeProps) {
         </section>
         {restaurant ? (
           <>
+            <RestaurantAbout restaurant={restaurant} className={styles.specialSection} headingId="sun-about" />
             <div className={styles.detailsGrid}>
               <RestaurantHours restaurant={restaurant} className={styles.hoursSection} headingId="sun-hours" />
               <RestaurantContact restaurant={restaurant} className={styles.detailSection} linkClassName={styles.textLink} headingId="sun-visit" />

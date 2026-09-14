@@ -14,7 +14,7 @@ vi.mock("next/image", () => ({
 }));
 
 const fixture: PublicRestaurant = {
-  id: "restaurant", name: "Prairie Table", shortDescription: "Seasonal", email: "hello@example.test", timeZone: "America/Winnipeg",
+  id: "restaurant", name: "Prairie Table", shortDescription: "Seasonal", about: null, email: "hello@example.test", timeZone: "America/Winnipeg",
   phone: { e164: "+12045550123", display: "(204) 555-0123" },
   address: { streetLine1: "1 Main", streetLine2: null, city: "Winnipeg", region: "MB", postalCode: "R3C 1A1", countryCode: "CA", formatted: "1 Main, Winnipeg", directionsUrl: "https://maps.example.test", latitude: null, longitude: null },
   regularHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, intervals: dayOfWeek ? [{ opensAt: "09:00:00", closesAt: "17:00:00", closesNextDay: false }] : [] })),
@@ -37,6 +37,27 @@ describe("RestaurantPreview", () => {
     expect(screen.getByRole("img", { name: "Dining room" })).toBeVisible();
     expect(screen.getByRole("link", { name: "https://prairietable.example" }))
       .toHaveAttribute("href", "https://prairietable.example");
+    expect((await axe.run(container, { rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
+  });
+
+  it("shows regular and special hours on the 12-hour clock with the next-day suffix on both (BUG-005)", async () => {
+    const { container } = render(<RestaurantPreview restaurant={{
+      ...fixture,
+      regularHours: [
+        { dayOfWeek: 0, intervals: [] },
+        { dayOfWeek: 1, intervals: [{ opensAt: "09:00:00", closesAt: "17:00:00", closesNextDay: false }] },
+        { dayOfWeek: 5, intervals: [
+          { opensAt: "12:00:00", closesAt: "14:30:00", closesNextDay: false },
+          { opensAt: "17:00:00", closesAt: "01:00:00", closesNextDay: true },
+        ] },
+      ],
+      specialHours: [{ date: "2026-12-31", isClosed: false, note: "Late service", intervals: [{ opensAt: "20:00:00", closesAt: "00:30:00", closesNextDay: true }] }],
+    }} />);
+
+    expect(screen.getByText("9:00 AM–5:00 PM")).toBeVisible();
+    expect(screen.getByText("12:00 PM–2:30 PM, 5:00 PM–1:00 AM next day")).toBeVisible();
+    expect(screen.getByText(/8:00 PM–12:30 AM next day Late service/)).toBeVisible();
+    expect(screen.queryByText(/\d\d:\d\d–/)).toBeNull();
     expect((await axe.run(container, { rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
   });
 });

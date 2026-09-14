@@ -6,11 +6,13 @@ import { brandInitials, brandLogoVariant } from "@/lib/brand";
 import { message } from "@/lib/menu-messages";
 import type { PublicImage } from "@/lib/restaurant-contract";
 
-import { MenuLink } from "./MenuLink";
+import { PrimaryNavigationLink, type PublicPage } from "./PrimaryNavigationLink";
 
 type PublicShellProps = Readonly<{
   restaurantName?: string;
   logo?: PublicImage | null;
+  /** Defaults to `"home"`: the 404 pages have no current page, and "Menu" is the useful way out. */
+  currentPage?: PublicPage;
   children: ReactNode;
 }>;
 
@@ -23,7 +25,7 @@ type PublicShellProps = Readonly<{
  * belongs to no tenant on that host. When the restaurant is unknown the header carries a plain home
  * link and no brand mark at all.
  */
-export function PublicShell({ restaurantName, logo, children }: PublicShellProps) {
+export function PublicShell({ restaurantName, logo, currentPage = "home", children }: PublicShellProps) {
   const name = restaurantName?.trim() ? restaurantName.trim() : null;
   const logoVariant = brandLogoVariant(logo);
   const initials = brandInitials(name);
@@ -57,7 +59,7 @@ export function PublicShell({ restaurantName, logo, children }: PublicShellProps
           <span>{name ?? message("home")}</span>
         </Link>
         <nav aria-label="Primary navigation">
-          <MenuLink className="publicNavLink">{message("menu")}</MenuLink>
+          <PrimaryNavigationLink className="publicNavLink" currentPage={currentPage} />
         </nav>
       </header>
       {children}

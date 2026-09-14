@@ -42,6 +42,10 @@
 .dayCard legend { padding-inline: .35rem; font-weight: 800; }
 .intervalRow { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: .5rem; margin-bottom: .5rem; }
 .inlineForm { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); align-items: end; gap: .75rem; }
+/* BUG-004: Opens, Closes and Remove overflowed a single 10rem cell and a later field painted over Remove, so the interval rows span the whole form. */
+.specialIntervals { grid-column: 1 / -1; width: 100%; max-width: 36rem; }
+/* BUG-006: "Add link" is the first secondary button that can be disabled, so it needs to look unavailable like a disabled primary button does. */
+.secondaryButton:disabled { cursor: not-allowed; opacity: .65; }
 .checkLabel { display: flex !important; min-height: 2.75rem; align-items: center; grid-template-columns: auto 1fr; }
 .checkLabel input { width: 1.25rem; min-height: 1.25rem; }
 .specialList { display: grid; gap: .5rem; padding: 0; list-style: none; }

@@ -45,7 +45,9 @@ internal static class PublicRestaurantEndpoints
             return TypedResults.StatusCode(StatusCodes.Status304NotModified);
         }
 
-        return TypedResults.Ok(restaurant with { Status = statusCalculator.Calculate(restaurant, timeProvider.GetUtcNow()) });
+        // BUG-007: the cached snapshot is frozen at publish time, so everything that depends on the clock — the
+        // status and which special-hours dates are still current — is derived here, per request.
+        return TypedResults.Ok(PublicSpecialHoursVisibility.AtInstant(restaurant, statusCalculator, timeProvider.GetUtcNow()));
     }
 
     private static async Task<IResult> GetGalleryAsync(

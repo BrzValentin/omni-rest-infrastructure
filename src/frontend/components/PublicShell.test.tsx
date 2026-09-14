@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ordinaryRestaurant } from "@/test/fixtures";
@@ -54,5 +54,28 @@ describe("PublicShell", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector(".publicFooter")?.textContent).toBe("");
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+  });
+
+  it("links to the menu by default, which is also the 404 pages' way out", () => {
+    render(
+      <PublicShell restaurantName="Prairie Table">
+        <main id="main-content" />
+      </PublicShell>,
+    );
+
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("link", { name: "Menu" })).toHaveAttribute("href", "/menu");
+  });
+
+  it("links home instead when it is the menu page's own header (BUG-008)", () => {
+    render(
+      <PublicShell restaurantName="Prairie Table" currentPage="menu">
+        <main id="main-content" />
+      </PublicShell>,
+    );
+
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(within(nav).queryByRole("link", { name: "Menu" })).not.toBeInTheDocument();
   });
 });

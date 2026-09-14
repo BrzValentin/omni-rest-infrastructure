@@ -1033,6 +1033,11 @@ namespace OmniRest.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("About")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("about");
+
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()

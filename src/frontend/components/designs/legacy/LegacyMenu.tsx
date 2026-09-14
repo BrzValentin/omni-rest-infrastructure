@@ -34,7 +34,7 @@ const menuClasses: DesignMenuClasses = {
 export default function LegacyMenu({ site }: WebsiteDesignMenuProps) {
   return (
     <div data-website-design="legacy-current-v1">
-      <PublicShell restaurantName={site.restaurantName} logo={site.restaurant?.logo}>
+      <PublicShell restaurantName={site.restaurantName} logo={site.restaurant?.logo} currentPage="menu">
         <main className={styles.menuMain} id="main-content" lang={site.locale}>
           <header className={styles.menuHero}>
             <p className={styles.eyebrow}>{message("menu")}</p>

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { MenuLink } from "@/components/MenuLink";
 import { PhoneLink } from "@/components/phone/PhoneLink";
 import { brandLogoVariant } from "@/lib/brand";
+import { formatInterval } from "@/lib/format-time";
+import { mapEmbedUrl } from "@/lib/map-embed";
 import type { PublicImage, PublicRestaurant } from "@/lib/restaurant-contract";
 
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -50,9 +52,7 @@ export function HomeLink({
   );
 }
 
-export function MenuNavigationLink({ className }: Readonly<{ className: string }>) {
-  return <MenuLink className={className}>Menu</MenuLink>;
-}
+export { PrimaryNavigationLink } from "@/components/PrimaryNavigationLink";
 
 export function RestaurantHeroImage({
   restaurant,
@@ -132,6 +132,36 @@ export function MenuRestaurantActions({
   );
 }
 
+/**
+ * The "About Us" section (PR-1 Task 1.1, BUG-001), from the owner's own About text.
+ *
+ * Deliberately a separate field from the 300-character description the hero shows: rendering that same
+ * sentence twice on one page is what an About section built from existing data would have looked like.
+ * Hidden entirely when the owner has written nothing, like every other optional section (Task 2.9).
+ *
+ * Blank lines in the text become paragraphs. Nothing else is interpreted — no markdown, no HTML — so an
+ * owner cannot break the page and nothing they type is ever rendered as markup.
+ */
+export function RestaurantAbout({
+  restaurant,
+  className,
+  headingId,
+}: Readonly<{ restaurant: PublicRestaurant; className?: string; headingId: string }>) {
+  const paragraphs = (restaurant.about ?? "")
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0);
+  if (paragraphs.length === 0) return null;
+  return (
+    <section className={className} aria-labelledby={headingId}>
+      <h2 id={headingId}>About Us</h2>
+      {paragraphs.map((paragraph, index) => (
+        <p key={index}>{paragraph}</p>
+      ))}
+    </section>
+  );
+}
+
 export function RestaurantContact({
   restaurant,
   className,
@@ -149,7 +179,37 @@ export function RestaurantContact({
       <h2 id={headingId}>Visit</h2>
       {restaurant.address ? <address>{restaurant.address.formatted}</address> : null}
       {restaurant.email ? <a className={linkClassName} href={`mailto:${restaurant.email}`}>{restaurant.email}</a> : null}
+      <RestaurantMap restaurant={restaurant} />
     </section>
+  );
+}
+
+/**
+ * The location map (PR-2 Tasks 2.9 and 2.10, BUG-003). Renders nothing without coordinates, which is
+ * exactly what Task 2.10 asks for: the address above it still shows on its own.
+ *
+ * Deliberately plain server markup — an `<iframe>`, no Maps JavaScript API — so no design markup and
+ * no map library reaches the client bundle (`scripts/assert-design-assets.mjs`), and the browser does
+ * no map work until the frame nears the viewport.
+ *
+ * Sized with inline styles rather than a design stylesheet class. The five stylesheets are served
+ * `immutable` for a year under a fixed filename, so a new rule there would never reach a returning
+ * visitor. The reserved `aspect-ratio` keeps the lazily loaded frame from shifting the page (the
+ * Phase 8 CLS budget on `/` is a hard gate).
+ */
+export function RestaurantMap({ restaurant }: Readonly<{ restaurant: PublicRestaurant }>) {
+  const src = mapEmbedUrl(restaurant.address, process.env.GOOGLE_MAPS_EMBED_API_KEY);
+  if (!src) return null;
+  return (
+    <iframe
+      title={`Map showing the location of ${restaurant.name}`}
+      src={src}
+      loading="lazy"
+      // Not `no-referrer`: a referrer-restricted Embed API key is checked against this header, and
+      // the map would refuse to load without it. The origin alone is all the key restriction needs.
+      referrerPolicy="strict-origin-when-cross-origin"
+      style={{ display: "block", width: "100%", maxWidth: "100%", aspectRatio: "4 / 3", border: 0 }}
+    />
   );
 }
 
@@ -214,9 +274,8 @@ export function DesignFooter({ className, restaurantName }: Readonly<{ className
 
 function formatIntervals(intervals: PublicRestaurant["regularHours"][number]["intervals"]): string {
   if (intervals.length === 0) return "Closed";
-  return intervals.map((period) =>
-    `${period.opensAt.slice(0, 5)}–${period.closesAt.slice(0, 5)}${period.closesNextDay ? " next day" : ""}`,
-  ).join(", ");
+  // 12-hour display (BUG-005). Stored and API values stay 24-hour `HH:mm:ss`.
+  return intervals.map(formatInterval).join(", ");
 }
 
 function humanize(value: string): string {

@@ -79,7 +79,14 @@ public sealed record PublicRestaurantResponse(
     /// The restaurant's own site, already validated as an absolute https URL, so the page may render it
     /// as an anchor and JSON-LD may use it as <c>url</c> without further checks. Null when unset.
     /// </summary>
-    string? WebsiteUrl = null);
+    string? WebsiteUrl = null,
+
+    /// <summary>
+    /// BUG-001: the owner's "About Us" copy, paragraphs separated by line breaks, rendered as text rather
+    /// than markup. Last and defaulted so publication snapshots serialized before the field existed still
+    /// deserialize, with no About section, until the next publish.
+    /// </summary>
+    string? About = null);
 
 public sealed class RestaurantPublicProjectionBuilder(
     TimeProvider timeProvider,
@@ -144,7 +151,8 @@ public sealed class RestaurantPublicProjectionBuilder(
         return response with
         {
             Status = statusCalculator.Calculate(response, timeProvider.GetUtcNow()),
-            WebsiteUrl = restaurant.WebsiteUrl
+            WebsiteUrl = restaurant.WebsiteUrl,
+            About = restaurant.About
         };
     }
 
@@ -304,7 +312,7 @@ public sealed class RestaurantStatusCalculator
             if (currentTime < closes)
             {
                 return new PublicRestaurantStatus(
-                    "open", $"Closes at {closes:HH\\:mm}", ToUtc(currentDate, closes, timeZone), source);
+                    "open", $"Closes at {LabelTime(closes)}", ToUtc(currentDate, closes, timeZone), source);
             }
         }
         return null;
@@ -326,13 +334,13 @@ public sealed class RestaurantStatusCalculator
             {
                 var closeDate = interval.ClosesNextDay ? date.AddDays(1) : date;
                 return new PublicRestaurantStatus(
-                    "open", $"Closes at {closes:HH\\:mm}", ToUtc(closeDate, closes, timeZone), source);
+                    "open", $"Closes at {LabelTime(closes)}", ToUtc(closeDate, closes, timeZone), source);
             }
 
             if (time < opens)
             {
                 return new PublicRestaurantStatus(
-                    "closed", $"Opens at {opens:HH\\:mm}", ToUtc(date, opens, timeZone), source);
+                    "closed", $"Opens at {LabelTime(opens)}", ToUtc(date, opens, timeZone), source);
             }
         }
 
@@ -361,15 +369,104 @@ public sealed class RestaurantStatusCalculator
 
             var opens = TimeOnly.ParseExact(firstInterval.OpensAt, "HH:mm:ss", CultureInfo.InvariantCulture);
             return new PublicRestaurantStatus(
-                "closed", $"Opens at {opens:HH\\:mm}", ToUtc(date, opens, timeZone), source);
+                "closed", $"Opens at {LabelTime(opens)}", ToUtc(date, opens, timeZone), source);
         }
 
         return null;
     }
+
+    /// <summary>
+    /// BUG-005: the label is display text a guest reads, so it is 12-hour with AM/PM ("5:00 PM", midnight
+    /// "12:00 AM", noon "12:00 PM"). Only this string changes; the machine fields (<c>OpensAt</c>,
+    /// <c>ClosesAt</c>) stay <c>HH:mm:ss</c> and <c>NextChangeAt</c> stays an instant. Invariant culture pins
+    /// the separator and the AM/PM designators regardless of the server's locale.
+    /// </summary>
+    private static string LabelTime(TimeOnly time) => time.ToString("h:mm tt", CultureInfo.InvariantCulture);
 
     private static DateTimeOffset ToUtc(DateOnly date, TimeOnly time, TimeZoneInfo timeZone)
     {
         var local = date.ToDateTime(time, DateTimeKind.Unspecified);
         return new DateTimeOffset(local, timeZone.GetUtcOffset(local)).ToUniversalTime();
     }
+}
+
+/// <summary>
+/// BUG-007: decides which special-hours entries the public site shows at a given instant. The publication
+/// snapshot is immutable and cached per version, so an expired date filtered at publish time would linger
+/// until the next publish; filtering at read time, exactly like the status, makes an entry drop off on its
+/// own. Nothing is deleted — the admin API still lists every stored date.
+/// </summary>
+public static class PublicSpecialHoursVisibility
+{
+    private const string DateFormat = "yyyy-MM-dd";
+
+    /// <summary>
+    /// The per-request view of a published or previewed restaurant: status recomputed and expired special
+    /// hours removed, both against the same <paramref name="now"/>. The status is computed from the
+    /// <em>unfiltered</em> list because an overnight carryover reads yesterday's entry. Records are copied
+    /// with <c>with</c>, so a cached snapshot is never mutated. Like the status, this does not feed the ETag,
+    /// which stays per publication version.
+    /// </summary>
+    public static PublicRestaurantResponse AtInstant(
+        PublicRestaurantResponse restaurant,
+        RestaurantStatusCalculator statusCalculator,
+        DateTimeOffset now) => restaurant with
+    {
+        Status = statusCalculator.Calculate(restaurant, now),
+        SpecialHours = VisibleSpecialHours(restaurant, now)
+    };
+
+    /// <summary>
+    /// Keeps entries dated today or later in the restaurant's local timezone, so today's entry stays up until
+    /// local midnight even when UTC has already rolled over. Also keeps yesterday's entry while one of its
+    /// overnight intervals is still running: the status line already says "Closes at …" from that entry, and
+    /// hiding the entry that explains it would contradict it. Dates are <c>yyyy-MM-dd</c>, so an ordinal
+    /// string comparison orders them correctly.
+    /// </summary>
+    public static IReadOnlyList<PublicSpecialHours> VisibleSpecialHours(PublicRestaurantResponse restaurant, DateTimeOffset now)
+    {
+        var timeZone = FindTimeZone(restaurant.TimeZone);
+        if (timeZone is null)
+        {
+            // Unknown zone: err towards showing. No UTC offset is more than a day behind UTC, so UTC's date
+            // minus one is never later than the restaurant's real local date and nothing current is hidden.
+            var fallbackToday = DateOnly.FromDateTime(now.UtcDateTime).AddDays(-1)
+                .ToString(DateFormat, CultureInfo.InvariantCulture);
+            return restaurant.SpecialHours
+                .Where(item => string.CompareOrdinal(item.Date, fallbackToday) >= 0)
+                .ToArray();
+        }
+
+        var localNow = TimeZoneInfo.ConvertTime(now, timeZone);
+        var localDate = DateOnly.FromDateTime(localNow.DateTime);
+        var localTime = TimeOnly.FromDateTime(localNow.DateTime);
+        var today = localDate.ToString(DateFormat, CultureInfo.InvariantCulture);
+        var yesterday = localDate.AddDays(-1).ToString(DateFormat, CultureInfo.InvariantCulture);
+        return restaurant.SpecialHours
+            .Where(item => string.CompareOrdinal(item.Date, today) >= 0 ||
+                (item.Date == yesterday && IsStillOpenPastMidnight(item, localTime)))
+            .ToArray();
+    }
+
+    private static TimeZoneInfo? FindTimeZone(string timeZoneId)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return null;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsStillOpenPastMidnight(PublicSpecialHours special, TimeOnly localTime) =>
+        !special.IsClosed && special.Intervals.Any(interval => interval.ClosesNextDay &&
+            TimeOnly.TryParseExact(interval.ClosesAt, "HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None,
+                out var closes) &&
+            localTime < closes);
 }

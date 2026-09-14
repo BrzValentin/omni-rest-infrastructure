@@ -18,7 +18,53 @@ public sealed class MigrationTests(PostgresFixture postgres)
 
         var pending = await context.Database.GetPendingMigrationsAsync();
         Assert.Empty(pending);
-        Assert.Equal(11, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(12, (await context.Database.GetAppliedMigrationsAsync()).Count());
+    }
+
+    /// <summary>
+    /// BUG-001: the About column arrives nullable and sized to the validated maximum, and a tenant that existed
+    /// before it upgrades with no About copy rather than a placeholder.
+    /// </summary>
+    [Fact]
+    public async Task BugFixUpgradeAddsNullableRestaurantAboutSizedToTheValidatedMaximumWithoutDisturbingExistingRows()
+    {
+        await using var context = CreateContext();
+        await context.Database.EnsureDeletedAsync();
+        var migrator = context.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260920120000_Phase8RestaurantWebsiteUrl");
+
+        await using (var connection = new NpgsqlConnection(postgres.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var seed = new NpgsqlCommand(
+                """
+                INSERT INTO public.restaurants (id, name, created_at, updated_at)
+                VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Pre-About Tenant', now(), now());
+                """, connection);
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        await migrator.MigrateAsync();
+
+        await using var verify = new NpgsqlConnection(postgres.ConnectionString);
+        await verify.OpenAsync();
+        await using (var shape = new NpgsqlCommand(
+            """
+            SELECT data_type, character_maximum_length, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'restaurants' AND column_name = 'about';
+            """, verify))
+        await using (var reader = await shape.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync(), "The BUG-001 migration must add restaurants.about.");
+            Assert.Equal("character varying", reader.GetString(0));
+            Assert.Equal(OmniRest.Api.Restaurants.RestaurantValidation.MaximumAboutLength, reader.GetInt32(1));
+            Assert.Equal("YES", reader.GetString(2));
+        }
+
+        await using var preserved = new NpgsqlCommand(
+            "SELECT count(*) FROM public.restaurants WHERE name = 'Pre-About Tenant' AND about IS NULL;", verify);
+        Assert.Equal(1L, await preserved.ExecuteScalarAsync());
     }
 
     [Fact]

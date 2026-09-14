@@ -5,7 +5,7 @@ import {
   DesignFooter,
   DesignSkipLink,
   HomeLink,
-  MenuNavigationLink,
+  PrimaryNavigationLink,
   MenuRestaurantActions,
 } from "../shared/PublicDesignParts";
 import { createDesignClassNames } from "../shared/designClassNames";
@@ -43,7 +43,7 @@ export default function BroadsheetMenu({ site }: WebsiteDesignMenuProps) {
       <header className={styles.header}>
         <p className={styles.edition}>Menu edition</p>
         <HomeLink className={styles.brand} restaurantName={site.restaurantName} logo={site.restaurant?.logo} logoClassName={styles.brandLogo} />
-        <nav aria-label="Primary navigation"><MenuNavigationLink className={styles.navLink} /></nav>
+        <nav aria-label="Primary navigation"><PrimaryNavigationLink className={styles.navLink} currentPage="menu" /></nav>
       </header>
       <main className={styles.menuMain} id="main-content" lang={site.locale}>
         <header className={styles.menuHero}>

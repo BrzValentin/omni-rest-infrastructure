@@ -66,6 +66,7 @@ public sealed partial class MenuDbContext(
         entity.Property(x => x.Id).HasColumnName("id");
         entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(120).IsRequired();
         entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+        entity.Property(x => x.About).HasColumnName("about").HasMaxLength(RestaurantValidation.MaximumAboutLength);
         entity.Property(x => x.PhoneE164).HasColumnName("phone_e164").HasMaxLength(16);
         entity.Property(x => x.PhoneDisplay).HasColumnName("phone_display").HasMaxLength(40);
         entity.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
@@ -283,6 +284,13 @@ public sealed class RestaurantEntity
     /// </summary>
     public string? Slug { get; set; }
     public string? Description { get; set; }
+
+    /// <summary>
+    /// BUG-001: the owner's longer "About Us" copy for the public home page. Deliberately separate from the
+    /// 300-character <see cref="Description"/>, which the hero renders as a one-line summary and JSON-LD
+    /// uses verbatim; stretching that field would break both. Null when the owner has written none.
+    /// </summary>
+    public string? About { get; set; }
     public string? PhoneE164 { get; set; }
     public string? PhoneDisplay { get; set; }
     public string? Email { get; set; }

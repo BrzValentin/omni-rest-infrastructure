@@ -59,7 +59,10 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; frame-ancestors 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+            // `frame-src` admits the Google Maps embed every design now renders (BUG-003). Without it
+            // `default-src 'self'` blocks the frame, and an owner previewing a design would see a
+            // blank box where the public site shows a map. Scoped to the one host the embed uses.
+            value: "default-src 'self'; frame-ancestors 'self'; frame-src https://www.google.com; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
           },
         ],
       },

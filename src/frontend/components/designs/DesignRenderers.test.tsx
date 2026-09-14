@@ -73,7 +73,9 @@ describe("selectable website design renderers", () => {
       expect(screen.getByText(/2026-12-25/)).toBeVisible();
       expect(container.textContent).not.toMatch(/reservation|booking|shop|gift card|events/i);
       expect(container.textContent).not.toMatch(/OSSA|TAIGA/i);
-      expect((await axe.run(container, { rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
+      // `iframes: false`: jsdom gives the map iframe no real frame window, so axe cannot message into
+      // it. `frame-title`, the rule that matters for an embed, is still checked on the element itself.
+      expect((await axe.run(container, { iframes: false, rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
     });
 
     it(`${design.id} preserves menu categories, prices, availability, and badges accessibly`, async () => {
@@ -199,6 +201,97 @@ describe("selectable website design renderers", () => {
         menu: { ...ordinaryMenu.menu!, categories: [] },
       }} />);
       expect(screen.getByRole("heading", { name: "No categories available" })).toBeVisible();
+    });
+  }
+});
+
+describe("About Us section (BUG-001, PR-1 Task 1.1)", () => {
+  for (const design of allRenderers) {
+    it(`${design.id} renders the owner's About text as its own section, one paragraph per block`, () => {
+      render(<design.Home restaurant={ordinaryRestaurant} />);
+      const about = screen.getByRole("region", { name: "About Us" });
+      expect(within(about).getAllByRole("paragraph").map((p) => p.textContent)).toEqual([
+        "We started as a long table and a short menu.",
+        "Today we still cook what the season brings.",
+      ]);
+      // Distinct from the hero's short description, not a second copy of it.
+      expect(about).not.toHaveTextContent(ordinaryRestaurant.shortDescription!);
+    });
+
+    it(`${design.id} hides About entirely when the owner has written nothing`, () => {
+      for (const about of [null, "", "  \n\n  "]) {
+        const { unmount } = render(<design.Home restaurant={{ ...ordinaryRestaurant, about }} />);
+        expect(screen.queryByRole("heading", { name: "About Us" })).not.toBeInTheDocument();
+        unmount();
+      }
+    });
+
+    it(`${design.id} shows About text as text, never as markup`, () => {
+      const { container } = render(<design.Home restaurant={{ ...ordinaryRestaurant, about: "<img src=x onerror=alert(1)>" }} />);
+      expect(screen.getByRole("region", { name: "About Us" })).toHaveTextContent("<img src=x onerror=alert(1)>");
+      expect(container.querySelector('img[src="x"]')).toBeNull();
+    });
+  }
+});
+
+describe("opening hours read as 12-hour times (BUG-005)", () => {
+  for (const design of allRenderers) {
+    it(`${design.id} shows regular and special hours with AM/PM, never 24-hour clock text`, () => {
+      const restaurant: PublicRestaurant = {
+        ...ordinaryRestaurant,
+        specialHours: [
+          { date: "2026-12-31", isClosed: false, note: null, intervals: [
+            { opensAt: "12:00:00", closesAt: "00:30:00", closesNextDay: true },
+          ] },
+        ],
+      };
+      const { container } = render(<design.Home restaurant={restaurant} />);
+      expect(container.textContent).toContain("9:00 AM–5:00 PM");
+      // Noon and just past midnight are the two values a naive `% 12` gets wrong.
+      expect(container.textContent).toContain("12:00 PM–12:30 AM next day");
+      expect(container.textContent).not.toMatch(/\b\d{2}:\d{2}–\d{2}:\d{2}\b/);
+    });
+  }
+});
+
+describe("location map (BUG-003, PR-2 Task 2.10)", () => {
+  for (const design of allRenderers) {
+    it(`${design.id} shows a lazily loaded map at the restaurant's coordinates`, () => {
+      const { container } = render(<design.Home restaurant={ordinaryRestaurant} />);
+      const map = screen.getByTitle(`Map showing the location of ${ordinaryRestaurant.name}`);
+      expect(map.tagName).toBe("IFRAME");
+      expect(map).toHaveAttribute("loading", "lazy");
+      expect(new URL(map.getAttribute("src")!).searchParams.get("q")).toBe("49.8951,-97.1384");
+      // The address and directions stay alongside the map, never replaced by it.
+      expect(container.textContent).toContain(ordinaryRestaurant.address!.formatted);
+    });
+
+    it(`${design.id} shows the address alone, with no map, when coordinates are missing`, () => {
+      const withoutCoordinates: PublicRestaurant = {
+        ...ordinaryRestaurant,
+        address: { ...ordinaryRestaurant.address!, latitude: null, longitude: null },
+      };
+      const { container } = render(<design.Home restaurant={withoutCoordinates} />);
+      expect(container.querySelector("iframe")).toBeNull();
+      expect(container.textContent).toContain(ordinaryRestaurant.address!.formatted);
+    });
+  }
+});
+
+describe("primary navigation toggles between Menu and Home (BUG-008)", () => {
+  for (const design of allRenderers) {
+    it(`${design.id} offers Menu on the home page`, () => {
+      render(<design.Home restaurant={ordinaryRestaurant} />);
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(within(nav).getByRole("link", { name: "Menu" })).toHaveAttribute("href", "/menu");
+      expect(within(nav).queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+    });
+
+    it(`${design.id} offers Home, not a link back to itself, on the menu page`, () => {
+      render(<design.Menu site={{ ...ordinaryMenu, websiteDesignId: design.id }} />);
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(within(nav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+      expect(within(nav).queryByRole("link", { name: "Menu" })).not.toBeInTheDocument();
     });
   }
 });

@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { BrowserApiError, browserGet, mutate, uploadMedia } from "@/lib/browser-api";
+import { formatInterval } from "@/lib/format-time";
 import { isE164 } from "@/lib/phone";
 import type { AdminMediaAsset, AdminMutation, AdminRestaurant, MainImage, PublicationStatus, RegularHoursDay, SocialLink, SpecialHours } from "@/lib/restaurant-contract";
-import { canadianTimeZones, priceRanges, restaurantTypes } from "@/lib/restaurant-contract";
+import { canadianTimeZones, isSocialPlatform, priceRanges, restaurantTypes, socialPlatformLabels, socialPlatforms } from "@/lib/restaurant-contract";
+import { platformForUrl } from "@/lib/social-platforms";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DraftStatusBar, publishingLabel, publishingSentence, sessionExpiredNotice } from "./DraftStatusBar";
 import { fieldErrorHelpers } from "./FieldError";
@@ -38,7 +40,7 @@ const ERROR_MESSAGES: Record<string, string> = {
  */
 const FIELD_LABELS: Record<string, string> = {
   name: "Name", description: "Description", phoneE164: "Phone number", phoneDisplay: "Phone number as shown",
-  email: "Email", timeZone: "Time zone", websiteUrl: "Website", restaurantType: "Establishment type",
+  email: "Email", timeZone: "Time zone", websiteUrl: "Website", about: "About us", restaurantType: "Establishment type",
   priceRange: "Price range", "address.line1": "Address line 1", "address.line2": "Address line 2",
   "address.city": "City", "address.region": "Province or state", "address.postalCode": "Postal code",
   "address.countryCode": "Country code", "address.coordinates": "Map coordinates", days: "Regular hours",
@@ -161,7 +163,7 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
   const [profile, setProfile] = useState({
     name: initial.name, description: initial.description ?? "", phoneE164: initial.phoneE164 ?? "",
     phoneDisplay: initial.phoneDisplay ?? "", email: initial.email ?? "", timeZone: initial.timeZone,
-    websiteUrl: initial.websiteUrl ?? "",
+    websiteUrl: initial.websiteUrl ?? "", about: initial.about ?? "",
     restaurantType: initial.restaurantType ?? "", priceRange: initial.priceRange ?? "",
     address: initial.address ?? EMPTY_ADDRESS,
   });
@@ -241,6 +243,7 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       phoneDisplay: profile.phoneDisplay || null,
       email: profile.email || null,
       websiteUrl: profile.websiteUrl.trim() || null,
+      about: profile.about.trim() || null,
       restaurantType: profile.restaurantType || null,
       priceRange: profile.priceRange || null,
       address: { ...profile.address, line2: profile.address.line2 || null },
@@ -267,6 +270,35 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       setSpecial(EMPTY_SPECIAL);
       setEditingSpecialId(null);
     }
+  }
+
+  // The backend allows one link per platform, so once every platform has a row there is nothing
+  // valid left to add (BUG-006).
+  const allSocialPlatformsUsed = socialPlatforms.every((platform) => socialLinks.some((link) => link.platform === platform));
+
+  /** A new row starts on the first platform nobody has used yet, never on one already taken (BUG-006). */
+  function addSocialLink() {
+    const next = socialPlatforms.find((platform) => !socialLinks.some((link) => link.platform === platform));
+    if (!next) return;
+    setSocialLinks([...socialLinks, { platform: next, url: "https://" }]);
+    setDirty(true);
+  }
+
+  /**
+   * Stores a typed or pasted URL and, when its host belongs to a platform no other row uses, switches
+   * the row to that platform.
+   *
+   * BUG-006: owners paste a profile address and expect the editor to know where it points. Before
+   * this, a Facebook URL in a row still set to Instagram was validated against Instagram's hosts and
+   * rejected. A platform already taken by another row is left alone — switching to it would only swap
+   * one error for `social_platform_duplicate`, and the backend's URL error explains the problem better.
+   */
+  function changeSocialUrl(index: number, url: string) {
+    const detected = platformForUrl(url);
+    const takenElsewhere = socialLinks.some((link, position) => position !== index && link.platform === detected);
+    setSocialLinks(socialLinks.map((item, position) => position !== index ? item
+      : { ...item, url, platform: detected && !takenElsewhere ? detected : item.platform }));
+    setDirty(true);
   }
 
   async function uploadSelectedMedia() {
@@ -311,6 +343,10 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
         <div className={styles.formGrid}>
           <label>Name<input required maxLength={120} {...fieldA11y("name")} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />{errorFor("name")}</label>
           <label>Description<textarea maxLength={300} {...fieldA11y("description")} value={profile.description} onChange={(e) => setProfile({ ...profile, description: e.target.value })} />{errorFor("description")}</label>
+          {/* BUG-001: the longer copy for the public "About Us" section, separate from the one-line
+              description the hero shows. Blank lines become paragraphs; leaving it empty hides the section. */}
+          <label>About us<textarea rows={6} maxLength={2000} {...fieldA11y("about")} aria-describedby="about-help" value={profile.about} onChange={(e) => setProfile({ ...profile, about: e.target.value })} />{errorFor("about")}</label>
+          <p id="about-help">Tell visitors your story. Leave a blank line between paragraphs. If you leave this empty, the About Us section is not shown.</p>
           <label>Phone number (with country code)<input inputMode="tel" placeholder="+12045550123" {...fieldA11y("phoneE164")} value={profile.phoneE164} onChange={(e) => setProfile({ ...profile, phoneE164: e.target.value })} />{errorFor("phoneE164")}</label>
           <label>Phone number as shown to visitors<input inputMode="tel" placeholder="(204) 555-0123" {...fieldA11y("phoneDisplay")} value={profile.phoneDisplay} onChange={(e) => setProfile({ ...profile, phoneDisplay: e.target.value })} />{errorFor("phoneDisplay")}</label>
           <label>Email<input type="email" autoComplete="email" {...fieldA11y("email")} value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />{errorFor("email")}</label>
@@ -330,6 +366,9 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
           <label>Country code<input required minLength={2} maxLength={2} autoComplete="country" {...fieldA11y("address.countryCode")} value={profile.address.countryCode} onChange={(e) => setProfile({ ...profile, address: { ...profile.address, countryCode: e.target.value.toUpperCase() } })} />{errorFor("address.countryCode")}</label>
           <label>Latitude<input type="number" min={-90} max={90} step="any" {...fieldA11y("address.coordinates")} value={profile.address.latitude ?? ""} onChange={(e) => setProfile({ ...profile, address: { ...profile.address, latitude: e.target.value === "" ? null : Number(e.target.value) } })} />{errorFor("address.coordinates")}</label>
           <label>Longitude<input type="number" min={-180} max={180} step="any" {...fieldA11y("address.coordinates")} value={profile.address.longitude ?? ""} onChange={(e) => setProfile({ ...profile, address: { ...profile.address, longitude: e.target.value === "" ? null : Number(e.target.value) } })} /></label>
+          {/* BUG-003: the public map is drawn only from these two numbers (PR-2 Task 2.10), never guessed
+              from the address, so an owner who leaves them blank gets no map and needs to be told why. */}
+          <p id="coordinates-help">Add both coordinates to show a map of your location on your website. In Google Maps, right-click your restaurant and click the numbers at the top of the menu to copy them.</p>
         </div>
         <button className={styles.primaryButton} disabled={busy !== null}>Save profile</button>
       </form>
@@ -355,7 +394,9 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
 
       <section className={styles.editorSection} aria-labelledby="special-title">
         <h2 id="special-title">Special hours</h2>
-        <ul className={styles.specialList}>{restaurant.specialHours.map((item) => <li key={item.id}><span><strong>{item.date}</strong> — {item.isClosed ? "Closed" : item.intervals.map((interval) => `${interval.opensAt.slice(0, 5)}–${interval.closesAt.slice(0, 5)}`).join(", ")}{item.note && ` (${item.note})`}</span><span className={styles.buttonRow}><button type="button" onClick={() => { setEditingSpecialId(item.id); setSpecial({ date: item.date, isClosed: item.isClosed, note: item.note, intervals: item.intervals.map((period) => ({ ...period, opensAt: period.opensAt.slice(0, 5), closesAt: period.closesAt.slice(0, 5) })) }); }}>Edit</button><button type="button" aria-label={`Delete special hours for ${item.date}`} onClick={() => setPendingDeleteSpecialId(item.id)}>Delete</button></span></li>)}</ul>
+        {/* BUG-005: saved times are shown on the 12-hour clock owners read; the time inputs below
+            keep their `HH:mm` values, which the HTML spec requires. */}
+        <ul className={styles.specialList}>{restaurant.specialHours.map((item) => <li key={item.id}><span><strong>{item.date}</strong> — {item.isClosed ? "Closed" : item.intervals.map((interval) => formatInterval(interval)).join(", ")}{item.note && ` (${item.note})`}</span><span className={styles.buttonRow}><button type="button" onClick={() => { setEditingSpecialId(item.id); setSpecial({ date: item.date, isClosed: item.isClosed, note: item.note, intervals: item.intervals.map((period) => ({ ...period, opensAt: period.opensAt.slice(0, 5), closesAt: period.closesAt.slice(0, 5) })) }); }}>Edit</button><button type="button" aria-label={`Delete special hours for ${item.date}`} onClick={() => setPendingDeleteSpecialId(item.id)}>Delete</button></span></li>)}</ul>
         {pendingDeleteSpecialId && <ConfirmDialog
           idPrefix="delete-special"
           title="Delete special hours?"
@@ -370,11 +411,13 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
         <div className={styles.inlineForm}>
           <label>Date<input type="date" required {...fieldA11y("date")} value={special.date} onChange={(e) => { setSpecial({ ...special, date: e.target.value }); setDirty(true); }} />{errorFor("date")}</label>
           <label className={styles.checkLabel}><input type="checkbox" checked={special.isClosed} onChange={(e) => { setSpecial({ ...special, isClosed: e.target.checked }); setDirty(true); }} /> Closed all day</label>
-          <div role="group" aria-label="Special-hour intervals" tabIndex={-1} {...fieldA11y("intervals")}>
+          {/* BUG-004: the intervals take a full row of their own so no later field can be painted
+              over their Remove buttons. There is deliberately no Note field here any more: an entry
+              being edited sends its existing note back unchanged, and a new entry sends none. */}
+          <div className={styles.specialIntervals} role="group" aria-label="Special-hour intervals" tabIndex={-1} {...fieldA11y("intervals")}>
             {!special.isClosed && special.intervals.map((period, index) => <div className={styles.intervalRow} key={index}><label>Opens<input type="time" value={period.opensAt} onChange={(e) => { setSpecial({ ...special, intervals: special.intervals.map((item, position) => position === index ? { ...item, opensAt: e.target.value } : item) }); setDirty(true); }} /></label><label>Closes<input type="time" value={period.closesAt} onChange={(e) => { setSpecial({ ...special, intervals: special.intervals.map((item, position) => position === index ? { ...item, closesAt: e.target.value } : item) }); setDirty(true); }} /></label><button type="button" aria-label={`Remove special period ${index + 1}`} onClick={() => { setSpecial({ ...special, intervals: special.intervals.filter((_, position) => position !== index) }); setDirty(true); }}>Remove</button></div>)}
             {errorFor("intervals")}
           </div>
-          <label>Note<input maxLength={200} {...fieldA11y("note")} value={special.note ?? ""} onChange={(e) => setSpecial({ ...special, note: e.target.value })} />{errorFor("note")}</label>
         </div>
         {!special.isClosed && <button className={styles.secondaryButton} type="button" onClick={() => { setSpecial({ ...special, intervals: [...special.intervals, { opensAt: "09:00", closesAt: "17:00", closesNextDay: false }] }); setDirty(true); }}>Add special period</button>}
         <div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={!special.date || (!special.isClosed && special.intervals.length === 0) || busy !== null} onClick={() => void saveSpecial()}>{editingSpecialId ? "Save special date" : "Add special date"}</button>{editingSpecialId && <button className={styles.secondaryButton} type="button" onClick={() => { setEditingSpecialId(null); setSpecial(EMPTY_SPECIAL); }}>Cancel edit</button>}</div>
@@ -383,12 +426,17 @@ export function RestaurantEditor({ initial, initialMedia }: { initial: AdminRest
       <section className={styles.editorSection} aria-labelledby="social-title" tabIndex={-1} {...fieldA11y("links")}>
         <h2 id="social-title">Social links</h2>
         {errorFor("links")}
+        {/* BUG-006: the platform is chosen from the keys the backend accepts, one link per platform.
+            A platform another row already uses is disabled rather than hidden, so the owner can see
+            why it cannot be picked twice. */}
         {socialLinks.map((link, index) => {
           const field = `links.${link.platform}`;
           const describedBy = fieldErrors[field] ? `error-${field.replaceAll(".", "-")}` : undefined;
-          return <div className={styles.inlineForm} key={index} role="group" aria-label={`${link.platform} social link`} tabIndex={-1} {...fieldA11y(field)}><label>Platform<input value={link.platform} onChange={(e) => { setSocialLinks(socialLinks.map((item, position) => position === index ? { ...item, platform: e.target.value } : item)); setDirty(true); }} /></label><label>URL<input type="url" aria-invalid={Boolean(fieldErrors[field])} aria-describedby={describedBy} value={link.url} onChange={(e) => { setSocialLinks(socialLinks.map((item, position) => position === index ? { ...item, url: e.target.value } : item)); setDirty(true); }} /></label>{errorFor(field)}<button type="button" onClick={() => { setSocialLinks(socialLinks.filter((_, position) => position !== index)); setDirty(true); }}>Remove</button></div>;
+          const usedElsewhere = new Set(socialLinks.filter((_, position) => position !== index).map((item) => item.platform));
+          return <div className={styles.inlineForm} key={index} role="group" aria-label={`${link.platform} social link`} tabIndex={-1} {...fieldA11y(field)}><label>Platform<select value={link.platform} onChange={(e) => { setSocialLinks(socialLinks.map((item, position) => position === index ? { ...item, platform: e.target.value } : item)); setDirty(true); }}>{isSocialPlatform(link.platform) ? null : <option value={link.platform}>{link.platform}</option>}{socialPlatforms.map((platform) => <option key={platform} value={platform} disabled={usedElsewhere.has(platform)}>{socialPlatformLabels[platform]}</option>)}</select></label><label>URL<input type="url" aria-invalid={Boolean(fieldErrors[field])} aria-describedby={describedBy} value={link.url} onChange={(e) => changeSocialUrl(index, e.target.value)} /></label>{errorFor(field)}<button type="button" onClick={() => { setSocialLinks(socialLinks.filter((_, position) => position !== index)); setDirty(true); }}>Remove</button></div>;
         })}
-        <div className={styles.buttonRow}><button type="button" className={styles.secondaryButton} onClick={() => { setSocialLinks([...socialLinks, { platform: "instagram", url: "https://" }]); setDirty(true); }}>Add link</button><button type="button" className={styles.primaryButton} disabled={busy !== null} onClick={() => void save("/api/v1/admin/restaurant/social-links", { links: socialLinks }, "Social links")}>Save social links</button></div>
+        {allSocialPlatformsUsed && <p id="social-links-full">Every supported platform already has a link. Remove one to add a different platform.</p>}
+        <div className={styles.buttonRow}><button type="button" className={styles.secondaryButton} disabled={allSocialPlatformsUsed} aria-describedby={allSocialPlatformsUsed ? "social-links-full" : undefined} onClick={addSocialLink}>Add link</button><button type="button" className={styles.primaryButton} disabled={busy !== null} onClick={() => void save("/api/v1/admin/restaurant/social-links", { links: socialLinks }, "Social links")}>Save social links</button></div>
       </section>
 
       <section className={styles.editorSection} aria-labelledby="image-title">

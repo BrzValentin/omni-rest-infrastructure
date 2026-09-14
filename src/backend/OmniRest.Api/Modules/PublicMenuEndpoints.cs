@@ -1,4 +1,5 @@
 using OmniRest.Api.Menus;
+using OmniRest.Api.Restaurants;
 using OmniRest.Api.Security;
 
 namespace OmniRest.Api.Modules;
@@ -22,6 +23,8 @@ internal static class PublicMenuEndpoints
         HttpRequest request,
         HttpResponse response,
         IPublicMenuReader reader,
+        RestaurantStatusCalculator statusCalculator,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         var result = await reader.ReadAsync(request.Host, cancellationToken);
@@ -45,6 +48,14 @@ internal static class PublicMenuEndpoints
             return TypedResults.StatusCode(StatusCodes.Status304NotModified);
         }
 
-        return TypedResults.Ok(result.Response);
+        // BUG-007: the nested restaurant gets the same per-request view as /restaurant — current status and no
+        // expired special hours — instead of the publish-time copy frozen in the snapshot.
+        var menu = result.Response;
+        return TypedResults.Ok(menu.Restaurant is null
+            ? menu
+            : menu with
+            {
+                Restaurant = PublicSpecialHoursVisibility.AtInstant(menu.Restaurant, statusCalculator, timeProvider.GetUtcNow())
+            });
     }
 }

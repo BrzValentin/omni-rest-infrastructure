@@ -163,15 +163,17 @@ test.describe("@seo", () => {
     expect(schema["@type"]).toBe("Restaurant");
     expect(schema.name).toBe("Prairie Table");
     expect(schema.url).toBe(`${origin}/`);
-    expect(schema.openingHoursSpecification).toHaveLength(7);
+    // Nine, not seven: the Development seed (BUG-002) splits Tuesday and Saturday into two service
+    // periods each, and Google's encoding gives every period its own entry for the same day.
+    expect(schema.openingHoursSpecification).toHaveLength(9);
     expect(schema.hasMenu).toBe(`${origin}/menu`);
     expect(schema.menu).toBe(`${origin}/menu`);
 
-    // The seeded tenant has no address, phone, description, or social links. Those properties must
-    // therefore be *absent* rather than present and empty — this is the no-empty-property rule
-    // observed against real data, which is stronger evidence than a fully populated fixture.
-    for (const absent of ["address", "telephone", "email", "description", "geo", "sameAs"]) {
-      expect(schema, `${absent} must be omitted when unset`).not.toHaveProperty(absent);
+    // BUG-002 filled in the seeded restaurant, so every property that used to be omitted is now backed
+    // by real data and must be emitted. The inverse rule — absent, never present-and-empty, when unset —
+    // is pinned by `lib/json-ld.test.ts`, and the walk below still guards it against this real payload.
+    for (const present of ["address", "telephone", "email", "description", "geo", "sameAs"]) {
+      expect(schema, `${present} must be emitted once the restaurant has it`).toHaveProperty(present);
     }
 
     // PR-18: no property is ever present-and-empty.
